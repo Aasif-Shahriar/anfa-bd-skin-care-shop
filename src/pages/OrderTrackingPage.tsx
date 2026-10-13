@@ -10,6 +10,7 @@ import {
   Mail,
   ShieldCheck,
   Printer,
+  Download,
   ArrowRight,
   RefreshCw,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { formatPrice } from '../utils/format';
 import { trackOrderByReferenceAndEmail } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { OrderReceiptModal } from '../components/OrderReceiptModal';
+import { downloadReceiptPdf } from '../utils/pdfGenerator';
 
 interface OrderTrackingPageProps {
   initialOrderId?: string;
@@ -36,6 +38,7 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   // If initialOrderId is passed and email is available, auto-search
   useEffect(() => {
@@ -242,13 +245,31 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({
                 Current Status: {trackedOrder.status}
               </span>
 
-              <button
-                onClick={() => setIsReceiptModalOpen(true)}
-                className="py-2 px-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl transition-all shadow-2xs flex items-center gap-2 text-xs font-semibold tracking-wider uppercase cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5 text-[#FF1493]" />
-                <span>Print Receipt / Record</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={async () => {
+                    setIsDownloadingPdf(true);
+                    try {
+                      await downloadReceiptPdf(trackedOrder);
+                    } finally {
+                      setIsDownloadingPdf(false);
+                    }
+                  }}
+                  disabled={isDownloadingPdf}
+                  className="py-2 px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl transition-all shadow-2xs flex items-center gap-2 text-xs font-semibold tracking-wider uppercase cursor-pointer disabled:opacity-50"
+                >
+                  <Download className={`w-3.5 h-3.5 text-[#FF1493] ${isDownloadingPdf ? 'animate-bounce' : ''}`} />
+                  <span>{isDownloadingPdf ? 'Generating...' : 'Download PDF'}</span>
+                </button>
+
+                <button
+                  onClick={() => setIsReceiptModalOpen(true)}
+                  className="py-2 px-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl transition-all shadow-2xs flex items-center gap-2 text-xs font-semibold tracking-wider uppercase cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#FF1493]" />
+                  <span>Print Receipt</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -436,7 +457,7 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({
         </div>
       )}
 
-      {/* Official Printable Receipt & Email Audit Modal */}
+      {/* Official Printable Receipt & PDF Modal */}
       <OrderReceiptModal
         order={trackedOrder}
         isOpen={isReceiptModalOpen}

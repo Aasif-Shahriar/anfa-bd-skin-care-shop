@@ -13,14 +13,18 @@ export interface SendInvoiceResponse {
 /**
  * Automatically dispatches an official order confirmation & tax invoice email to the customer.
  */
-export async function sendOrderInvoiceEmail(order: Order): Promise<SendInvoiceResponse> {
+export async function sendOrderInvoiceEmail(
+  order: Order,
+  customRecipient?: string
+): Promise<SendInvoiceResponse> {
+  const targetEmail = customRecipient || order.customer.email;
   try {
     const res = await fetch('/api/orders/send-invoice-email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ order }),
+      body: JSON.stringify({ order, recipient: targetEmail }),
     });
 
     if (!res.ok) {
@@ -36,9 +40,9 @@ export async function sendOrderInvoiceEmail(order: Order): Promise<SendInvoiceRe
       success: true,
       emailSent: true,
       transport: 'client-queued',
-      recipient: order.customer.email,
+      recipient: targetEmail,
       orderNumber: order.orderNumber,
-      message: `Invoice recorded and queued for ${order.customer.email}`,
+      message: `Invoice recorded and queued for ${targetEmail}`,
     };
   }
 }

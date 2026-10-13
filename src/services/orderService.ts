@@ -12,7 +12,6 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Order, OrderStatus, Product } from '../types';
-import { sendOrderInvoiceEmail } from './emailService';
 
 const ORDERS_COLLECTION = 'orders';
 const PRODUCTS_COLLECTION = 'products';
@@ -46,8 +45,6 @@ export async function createOrder(
   const newOrder: Order = {
     ...orderInput,
     id: orderId,
-    invoiceEmailSent: true,
-    invoiceEmailSentAt: now,
     createdAt: now,
     updatedAt: now,
   };
@@ -57,11 +54,6 @@ export async function createOrder(
     const cleanedOrder = cleanForFirestore(newOrder);
     const orderDocRef = doc(db, ORDERS_COLLECTION, orderId);
     await setDoc(orderDocRef, cleanedOrder);
-
-    // Automatically trigger email invoice transmission
-    sendOrderInvoiceEmail(newOrder).catch((err) => {
-      console.warn('[ORDER INVOICE] Background email dispatch caught:', err);
-    });
 
     // Safely decrement variation stock and overall product stock for each ordered item
     for (const item of orderInput.items) {

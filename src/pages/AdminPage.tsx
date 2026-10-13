@@ -18,13 +18,14 @@ import {
   Layers,
   Sparkles,
   Printer,
-  Mail,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { Product, ProductVariation, Order, OrderStatus, Category } from '../types';
 import { formatPrice, slugify } from '../utils/format';
 import { OrderReceiptModal } from '../components/OrderReceiptModal';
+import { downloadReceiptPdf } from '../utils/pdfGenerator';
 import {
   fetchProducts,
   saveProduct,
@@ -78,6 +79,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
   // Order Details Modal State
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+  const [downloadingPdfAdminId, setDownloadingPdfAdminId] = useState<string | null>(null);
 
   // Uploading state
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -876,11 +878,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
                     <th className="py-3.5 px-4">Order Ref</th>
                     <th className="py-3.5 px-4">Customer</th>
                     <th className="py-3.5 px-4">Phone</th>
-                    <th className="py-3.5 px-4">Items & Variations</th>
+                    <th className="py-3.5 px-4">Items &amp; Variations</th>
                     <th className="py-3.5 px-4">Total</th>
                     <th className="py-3.5 px-4">Payment</th>
                     <th className="py-3.5 px-4">Order Status</th>
-                    <th className="py-3.5 px-4 text-right">View</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-900">
@@ -953,6 +955,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
 
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={async () => {
+                              setDownloadingPdfAdminId(ord.id);
+                              try {
+                                await downloadReceiptPdf(ord);
+                              } finally {
+                                setDownloadingPdfAdminId(null);
+                              }
+                            }}
+                            disabled={downloadingPdfAdminId === ord.id}
+                            className="p-1.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors cursor-pointer disabled:opacity-50"
+                            title="Download PDF Receipt / Order Record"
+                          >
+                            <Download className={`w-4 h-4 text-[#FF1493] ${downloadingPdfAdminId === ord.id ? 'animate-bounce' : ''}`} />
+                          </button>
                           <button
                             onClick={() => setPrintingOrder(ord)}
                             className="p-1.5 text-slate-600 hover:text-[#FF1493] hover:bg-[#FFF0F6] rounded transition-colors cursor-pointer"
@@ -1477,18 +1494,36 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
                   </p>
                 </div>
 
-                <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl mt-3">
-                  <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-[#FF1493]" />
-                    <span>Customer: <strong>{viewingOrder.customer.email}</strong></span>
+                <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 p-3.5 rounded-xl mt-3">
+                  <div className="text-xs text-slate-600 flex items-center gap-1.5">
+                    <Printer className="w-3.5 h-3.5 text-[#FF1493]" />
+                    <span>Customer Tax Invoice &amp; Official Order Record</span>
                   </div>
-                  <button
-                    onClick={() => setPrintingOrder(viewingOrder)}
-                    className="py-2 px-4 bg-[#FF1493] hover:bg-[#E00078] text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm flex items-center gap-2 cursor-pointer transition-colors"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Print Receipt / Invoice</span>
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        setDownloadingPdfAdminId(viewingOrder.id);
+                        try {
+                          await downloadReceiptPdf(viewingOrder);
+                        } finally {
+                          setDownloadingPdfAdminId(null);
+                        }
+                      }}
+                      disabled={downloadingPdfAdminId === viewingOrder.id}
+                      className="py-2 px-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold uppercase tracking-wider rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      <Download className={`w-3.5 h-3.5 text-[#FF1493] ${downloadingPdfAdminId === viewingOrder.id ? 'animate-bounce' : ''}`} />
+                      <span>{downloadingPdfAdminId === viewingOrder.id ? 'Generating...' : 'Download PDF'}</span>
+                    </button>
+                    <button
+                      onClick={() => setPrintingOrder(viewingOrder)}
+                      className="py-2 px-4 bg-[#FF1493] hover:bg-[#E00078] text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Print Receipt</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1496,7 +1531,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
         </div>
       )}
 
-      {/* Official Printable Receipt & Email Audit Modal */}
+      {/* Official Printable Receipt & PDF Modal */}
       <OrderReceiptModal
         order={printingOrder}
         isOpen={Boolean(printingOrder)}

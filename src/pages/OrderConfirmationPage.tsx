@@ -9,10 +9,12 @@ import {
   Mail,
   MapPin,
   FileText,
+  Download,
 } from 'lucide-react';
 import { Order } from '../types';
 import { formatPrice } from '../utils/format';
 import { OrderReceiptModal } from '../components/OrderReceiptModal';
+import { downloadReceiptPdf } from '../utils/pdfGenerator';
 
 interface OrderConfirmationPageProps {
   order: Order;
@@ -24,6 +26,9 @@ export const OrderConfirmationPage: React.FC<OrderConfirmationPageProps> = ({
   onNavigate,
 }) => {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
   useEffect(() => {
     // Fire celebratory confetti on mount
     try {
@@ -38,12 +43,22 @@ export const OrderConfirmationPage: React.FC<OrderConfirmationPageProps> = ({
     }
   }, []);
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownloadPdf = async () => {
+    setIsDownloading(true);
+    setDownloadSuccess(false);
+    try {
+      await downloadReceiptPdf(order);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 5000);
+    } catch (err) {
+      console.error('Failed to download PDF:', err);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-10 animate-fade-in">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-8 animate-fade-in">
       {/* Top banner */}
       <div className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-10 text-center shadow-sm relative overflow-hidden">
         <div className="w-16 h-16 rounded-full bg-[#FFF0F6] text-[#FF1493] flex items-center justify-center mx-auto mb-4 border border-[#FFC1E3]">
@@ -74,26 +89,62 @@ export const OrderConfirmationPage: React.FC<OrderConfirmationPageProps> = ({
             Status: {order.status}
           </span>
         </div>
+      </div>
 
-        {/* Automatic Email Invoice Notice */}
-        <div className="mt-4 max-w-xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-pink-50/70 border border-pink-200 rounded-xl text-xs text-left">
-          <div className="flex items-center gap-2.5">
-            <Mail className="w-4 h-4 text-[#FF1493] shrink-0" />
-            <div>
-              <p className="font-semibold text-slate-900">
-                Invoice Automatically Dispatched to Email
+      {/* Official Tax Invoice & PDF Download Card */}
+      <div className="bg-white rounded-2xl border-2 border-[#FFC1E3] p-6 sm:p-7 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#FF1493] via-[#D4AF37] to-[#FF1493]" />
+        
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#FFF0F6] text-[#FF1493] flex items-center justify-center shrink-0 border border-[#FFC1E3] shadow-xs">
+              <FileText className="w-6 h-6 text-[#FF1493]" />
+            </div>
+            
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-[#FFF0F6] text-[#FF1493] border border-[#FFC1E3]">
+                  Official Tax Invoice &amp; Order Record
+                </span>
+                <span className="text-xs text-slate-500">
+                  {new Date(order.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+              
+              <h3 className="font-serif text-base sm:text-lg font-medium text-slate-900">
+                Downloadable PDF &amp; Printable Receipt Ready
+              </h3>
+              
+              <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
+                An itemized receipt and official order record for Order <strong>#{order.orderNumber}</strong> has been generated. You can download the PDF document directly or open the print-ready sheet.
               </p>
-              <p className="text-[11px] text-slate-600">
-                Delivered to <strong>{order.customer.email}</strong> with order breakdown &amp; terms.
-              </p>
+
+              {downloadSuccess && (
+                <div className="pt-1.5 text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>PDF invoice downloaded successfully: ANFA-Receipt-{order.orderNumber}.pdf</span>
+                </div>
+              )}
             </div>
           </div>
-          <button
-            onClick={() => setIsReceiptModalOpen(true)}
-            className="w-full sm:w-auto px-3 py-1.5 bg-white border border-pink-300 hover:bg-pink-50 text-[#FF1493] font-bold rounded-lg text-[11px] shrink-0 transition-colors cursor-pointer text-center"
-          >
-            View &amp; Print
-          </button>
+
+          <div className="flex flex-wrap md:flex-col gap-2.5 w-full md:w-auto shrink-0">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+              className="flex-1 md:flex-none py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            >
+              <Download className={`w-3.5 h-3.5 text-[#FF1493] ${isDownloading ? 'animate-bounce' : ''}`} />
+              <span>{isDownloading ? 'Downloading...' : 'Download PDF Receipt'}</span>
+            </button>
+            <button
+              onClick={() => setIsReceiptModalOpen(true)}
+              className="flex-1 md:flex-none py-2.5 px-5 bg-white hover:bg-[#FFF0F6] text-slate-800 hover:text-[#FF1493] border border-slate-300 hover:border-[#FFC1E3] rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
+            >
+              <Printer className="w-3.5 h-3.5 text-[#FF1493]" />
+              <span>View &amp; Print Receipt</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -243,6 +294,15 @@ export const OrderConfirmationPage: React.FC<OrderConfirmationPageProps> = ({
           {/* Action buttons */}
           <div className="space-y-3">
             <button
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+              className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Download className={`w-4 h-4 text-[#FF1493] ${isDownloading ? 'animate-bounce' : ''}`} />
+              {isDownloading ? 'Generating PDF...' : 'Download Receipt (PDF)'}
+            </button>
+
+            <button
               onClick={() => setIsReceiptModalOpen(true)}
               className="w-full py-3.5 px-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
@@ -268,7 +328,7 @@ export const OrderConfirmationPage: React.FC<OrderConfirmationPageProps> = ({
         </div>
       </div>
 
-      {/* Official Printable Receipt & Email Audit Modal */}
+      {/* Official Printable Receipt & PDF Modal */}
       <OrderReceiptModal
         order={order}
         isOpen={isReceiptModalOpen}

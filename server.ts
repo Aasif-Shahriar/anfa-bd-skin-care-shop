@@ -223,12 +223,13 @@ app.get('/api/admin/verify-token', async (req: Request, res: Response): Promise<
  * Automatically sends an email invoice to the customer when an order is created or when requested.
  */
 app.post('/api/orders/send-invoice-email', async (req: Request, res: Response): Promise<void> => {
-  const { order } = req.body;
-  if (!order || !order.customer || !order.customer.email) {
+  const { order, recipient } = req.body;
+  if (!order || !order.customer || (!order.customer.email && !recipient)) {
     res.status(400).json({ error: 'BadRequest', message: 'Order object with customer.email is required.' });
     return;
   }
 
+  const finalRecipient = (recipient && typeof recipient === 'string' && recipient.trim()) || order.customer.email;
   const { customer, items, orderNumber, subtotal, shippingFee, total, paymentMethod, deliveryZone, createdAt } = order;
 
   // Format delivery zone title
@@ -419,21 +420,21 @@ app.post('/api/orders/send-invoice-email', async (req: Request, res: Response): 
 
       await transporter.sendMail({
         from: `"ANFA BD Boutique" <${smtpUser}>`,
-        to: customer.email,
+        to: finalRecipient,
         subject: `Your Invoice for Order #${orderNumber} • ANFA BD`,
         html: emailHtml,
       });
 
       emailSent = true;
       transportInfo = 'smtp';
-      console.log(`[EMAIL DISPATCH] Real SMTP invoice email successfully sent to ${customer.email} for order #${orderNumber}`);
+      console.log(`[EMAIL DISPATCH] Real SMTP invoice email successfully sent to ${finalRecipient} for order #${orderNumber}`);
     } else {
       // Automatic simulation / logging when SMTP credentials are not yet configured
       emailSent = true;
       transportInfo = 'simulated-logged';
       console.log('========================================================================');
       console.log(`[AUTOMATIC EMAIL INVOICE DISPATCH]`);
-      console.log(`To: ${customer.email} (${customer.name})`);
+      console.log(`To: ${finalRecipient} (${customer.name})`);
       console.log(`Subject: Your Invoice for Order #${orderNumber} • ANFA BD`);
       console.log(`Total: ৳${(total || 0).toLocaleString()} (Delivery: ৳${shippingFee || 0} - ${zoneLabel})`);
       console.log(`Status: Invoice generated and dispatched to customer's inbox.`);
@@ -444,9 +445,9 @@ app.post('/api/orders/send-invoice-email', async (req: Request, res: Response): 
       success: true,
       emailSent,
       transport: transportInfo,
-      recipient: customer.email,
+      recipient: finalRecipient,
       orderNumber,
-      message: `Invoice email successfully dispatched to ${customer.email}`,
+      message: `Invoice email successfully dispatched to ${finalRecipient}`,
       htmlPreview: emailHtml,
     });
   } catch (err: any) {

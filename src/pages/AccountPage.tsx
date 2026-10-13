@@ -15,6 +15,7 @@ import {
   Truck,
   Cloud,
   Printer,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -23,6 +24,7 @@ import { fetchUserOrders } from '../services/orderService';
 import { formatPrice } from '../utils/format';
 import { ProductCard } from '../components/ProductCard';
 import { OrderReceiptModal } from '../components/OrderReceiptModal';
+import { downloadReceiptPdf } from '../utils/pdfGenerator';
 
 interface AccountPageProps {
   products: Product[];
@@ -42,6 +44,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<Order | null>(null);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
 
   // Profile edit state
   const [editingProfile, setEditingProfile] = useState(false);
@@ -254,11 +257,28 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                     </button>
 
                     <button
+                      onClick={async () => {
+                        setDownloadingPdfId(ord.id);
+                        try {
+                          await downloadReceiptPdf(ord);
+                        } finally {
+                          setDownloadingPdfId(null);
+                        }
+                      }}
+                      disabled={downloadingPdfId === ord.id}
+                      className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title="Download PDF Tax Invoice"
+                    >
+                      <Download className={`w-3.5 h-3.5 text-[#FF1493] ${downloadingPdfId === ord.id ? 'animate-bounce' : ''}`} />
+                      <span>{downloadingPdfId === ord.id ? 'Saving...' : 'PDF'}</span>
+                    </button>
+
+                    <button
                       onClick={() => setSelectedReceiptOrder(ord)}
                       className="px-3 py-1 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5 text-[#FF1493]" />
-                      <span>Print Receipt</span>
+                      <span>Print</span>
                     </button>
                   </div>
                 </div>

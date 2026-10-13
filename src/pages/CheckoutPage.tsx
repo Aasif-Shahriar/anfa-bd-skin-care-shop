@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Truck, Lock, ArrowLeft, AlertCircle, Check } from 'lucide-react';
+import { ShieldCheck, Truck, Lock, ArrowLeft, AlertCircle, Check, FileText, Download } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { CustomerInfo, Order, DELIVERY_ZONES, DeliveryZone, DeliveryZoneOption } from '../types';
@@ -196,6 +196,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onNavigate, onOrderS
                   onChange={handleChange}
                   className="w-full px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-[#FF1493] focus:bg-white"
                 />
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  Used for parcel delivery notifications and official order identification.
+                </p>
               </div>
 
               <div>
@@ -494,6 +497,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onNavigate, onOrderS
                 {formatPrice(total)}
               </span>
             </div>
+          </div>
+
+          {/* Instant PDF Receipt Notice */}
+          <div className="p-3 bg-[#FFF0F6] border border-[#FFC1E3] rounded-xl text-xs text-slate-800 flex items-center gap-2.5">
+            <Download className="w-4 h-4 text-[#FF1493] shrink-0" />
+            <span className="text-[11px] leading-tight">
+              <strong>Instant PDF &amp; Print Receipt:</strong> Official tax invoice &amp; order record can be downloaded as a PDF or printed instantly upon order confirmation.
+            </span>
           </div>
 
           {/* Place Order CTA */}
