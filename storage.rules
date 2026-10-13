@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.admin == true ||
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'asif.al.azad201m@gmail.com' ||
+          request.auth.token.email == 'faria201237@gmail.com'
+        ))
+      );
+    }
+
+    // Product imagery & assets: public read, strictly admin-only create, replace, or delete
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Default: public read for assets, admin-only write
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

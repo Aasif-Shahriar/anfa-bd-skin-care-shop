@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Admin authorization: verifies request.auth != null and either admin custom claim or designated admin emails
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.admin == true ||
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'asif.al.azad201m@gmail.com' ||
+          request.auth.token.email == 'faria201237@gmail.com'
+        ))
+      );
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Products collection:
+    // Anyone can view products
+    // Only verified admin with custom claim { admin: true } can create, update, or delete products, prices, stock, variations
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Orders collection:
+    // Anyone can create an order as part of checkout
+    // Customers can ONLY read their own orders (where userId matches their uid)
+    // Only verified admin can read all orders, update order status, or delete orders
+    match /orders/{orderId} {
+      allow create: if true;
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // User profiles & subcollections:
+    // User can read and write only their own document/subcollections
+    // Admin can read user records
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+    match /users/{userId}/{document=**} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Reviews collection:
+    // Anyone can read reviews
+    // Authenticated users can create reviews matching their auth.uid
+    // Only the author or an admin with custom claim { admin: true } can update or delete reviews
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // Admin-only collections:
+    match /admin/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Connection testing
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

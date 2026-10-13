@@ -1,0 +1,6 @@
+{
+  "name": "ANFA BD | Premium Korean & Girls Skin Care Boutique",
+  "description": "Discover 100% authentic Korean and dermatological skincare for girls. Serums, moisturizers, sun care, toners, and cleansers for glowing, glass-like skin in Bangladesh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
