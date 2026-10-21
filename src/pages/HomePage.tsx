@@ -137,26 +137,17 @@ export const HomePage: React.FC<HomePageProps> = ({
             
             {/* Left Column: Brand Story & Call to Actions */}
             <div className="lg:col-span-7 space-y-7">
-              {/* Luxury Kicker Badge with Pulsing Live Dot */}
-              <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-pink-500/30 text-pink-200 text-xs tracking-[0.22em] font-semibold uppercase shadow-lg">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF1493] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FF1493]" />
-                </span>
-                <span>Seoul Direct Import · Authentic K-Beauty Edit</span>
-              </div>
-
               {/* High-Fashion Editorial Typography */}
-              <h1 className="font-serif text-4xl sm:text-6xl lg:text-7xl font-light tracking-tight leading-[1.08] text-white">
-                The Essence of <br />
+              <h1 className="font-serif text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08] text-white">
+                Low profits and <br />
                 <span className="italic font-normal text-transparent bg-clip-text bg-gradient-to-r from-pink-200 via-pink-100 to-[#FF69B4]">
-                  Pure Glass Skin.
+                  customer satisfaction
                 </span>
               </h1>
 
               {/* Refined Curation Description */}
               <p className="text-base sm:text-lg text-pink-100/90 font-light leading-relaxed max-w-xl">
-                Authentic Korean formulations imported directly from Seoul. Crafted for girls and blemish-prone sensitive skin with Centella Cica, Niacinamide, Camellia extracts, and barrier-repair ceramides.
+                Authentic Korean &amp; Chinese skincare products directly imported for girls in Bangladesh. Crafted with Centella Asiatica, Niacinamide, Camellia extracts, and barrier-repair ceramides.
               </p>
 
               {/* Action Buttons with Ambient Neon Glow */}
@@ -181,15 +172,15 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div className="pt-4 flex flex-wrap items-center gap-6 text-xs text-pink-200/90 font-medium border-t border-white/10">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#FF1493]" />
-                  <span>100% Genuine Batch Codes</span>
+                  <span>Mirpur, Dhaka, Bangladesh</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#FF1493]" />
-                  <span>Cash on Delivery in Bangladesh</span>
+                  <span>100% Cash on Delivery</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#FF1493]" />
-                  <span>Free Samples with Every Order</span>
+                  <span>Doorstep Package Inspection</span>
                 </div>
               </div>
             </div>
@@ -202,39 +193,14 @@ export const HomePage: React.FC<HomePageProps> = ({
               {/* Main Image Stage */}
               <div className="relative w-full max-w-lg aspect-[4/3] rounded-3xl overflow-hidden border border-pink-400/30 shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_30px_rgba(255,20,147,0.3)] group">
                 <img
-                  src={luxuryHeroImg}
-                  alt="ANFA BD Luxury Korean Botanical Skincare Collection"
+                  src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792564765/441ebc7b-70e6-4d48-b038-c1888c32a078.png"
+                  alt="ANFA BD Skincare Collection - Low profits and customer satisfaction"
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-1000 ease-out"
                 />
                 
                 {/* Subtle Inner Glass Vignette */}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#18020D]/60 via-transparent to-transparent pointer-events-none" />
               </div>
-
-              {/* Top-Left Floating Badge */}
-              <div className="absolute -top-4 -left-4 sm:-left-6 p-3 sm:p-4 rounded-2xl glass-panel shadow-2xl text-slate-900 animate-float pointer-events-none max-w-[200px]">
-                <div className="flex items-center gap-1 text-[#FF1493] text-xs mb-1">
-                  <Star className="w-3.5 h-3.5 fill-[#FF1493]" />
-                  <Star className="w-3.5 h-3.5 fill-[#FF1493]" />
-                  <Star className="w-3.5 h-3.5 fill-[#FF1493]" />
-                  <Star className="w-3.5 h-3.5 fill-[#FF1493]" />
-                  <Star className="w-3.5 h-3.5 fill-[#FF1493]" />
-                  <span className="font-bold text-[11px] text-slate-800 ml-1">4.95</span>
-                </div>
-                <p className="text-[11px] font-bold text-slate-900 leading-tight">Camellia Glow Serums</p>
-                <p className="text-[10px] text-slate-500 font-medium mt-0.5">5,400+ Bottles Loved</p>
-              </div>
-
-              {/* Bottom-Right Floating Badge */}
-              <div className="absolute -bottom-5 -right-3 sm:-right-5 p-3 sm:p-4 rounded-2xl glass-panel-dark shadow-2xl text-white animate-float-slow pointer-events-none max-w-[210px]">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-pink-300">Formulated in Seoul</span>
-                </div>
-                <p className="text-xs font-semibold text-white leading-tight">100% Skin Barrier Safe</p>
-                <p className="text-[10px] text-pink-200/80 mt-0.5">Zero fragrance · Hypoallergenic</p>
-              </div>
-
             </div>
 
           </div>

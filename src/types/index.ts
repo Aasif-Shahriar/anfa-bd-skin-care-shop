@@ -1,4 +1,19 @@
 export type Category =
+  | 'Sheet Mask'
+  | 'Mud Mask'
+  | 'Sleeping Mask'
+  | 'Bubble Mask'
+  | 'Eye Mask'
+  | 'Lip Mask'
+  | 'Sunscreen'
+  | 'Body Wash'
+  | 'Nose Strip'
+  | 'Blackhead Remover'
+  | 'Makeup Remover'
+  | 'Applicator'
+  | 'Foot Mask'
+  | 'Combo Offer'
+  // Legacy aliases for backward compatibility with initial sample data
   | 'Sheet mask'
   | 'Mud mask'
   | 'Sleeping mask'
@@ -10,32 +25,48 @@ export type Category =
   | 'Nose strip'
   | 'Blackhead remover'
   | 'Makeup remover'
-  | 'Applicator'
   | 'Foot mask'
   | 'Combo offer';
 
-export const ALL_CATEGORIES: Category[] = [
-  'Sheet mask',
-  'Mud mask',
-  'Sleeping mask',
-  'Bubble mask',
-  'Eye mask',
-  'Lip mask',
-  'Sunscream',
-  'Bodywash',
-  'Nose strip',
-  'Blackhead remover',
-  'Makeup remover',
+export const EXACT_14_CATEGORIES = [
+  'Sheet Mask',
+  'Mud Mask',
+  'Sleeping Mask',
+  'Bubble Mask',
+  'Eye Mask',
+  'Lip Mask',
+  'Sunscreen',
+  'Body Wash',
+  'Nose Strip',
+  'Blackhead Remover',
+  'Makeup Remover',
   'Applicator',
-  'Foot mask',
-  'Combo offer',
+  'Foot Mask',
+  'Combo Offer',
+] as const;
+
+export const ALL_CATEGORIES: Category[] = [
+  'Sheet Mask',
+  'Mud Mask',
+  'Sleeping Mask',
+  'Bubble Mask',
+  'Eye Mask',
+  'Lip Mask',
+  'Sunscreen',
+  'Body Wash',
+  'Nose Strip',
+  'Blackhead Remover',
+  'Makeup Remover',
+  'Applicator',
+  'Foot Mask',
+  'Combo Offer',
 ];
 
 export interface ProductVariation {
   id: string;
-  name: string; // e.g. "50ml Standard", "100ml Jumbo Size", "Calming Centella", "Hydrating Glow"
-  color: string; // e.g. "Dewy Glow", "Calming Herbal", "Hydra Blue", "Rose Velvet"
-  colorCode: string; // hex swatch for formula/shade/type
+  name: string; // e.g. "50ml Dropper", "Shade 21 Ivory", "Single Pack", "3-Pack Value"
+  color?: string; // color or shade label, e.g. "Dewy Glow", "Clear", "Fair"
+  colorCode?: string; // hex swatch code, e.g. "#A7F3D0"
   images: string[]; // images specific to this variation
   sku?: string;
   stock: number;
@@ -43,13 +74,27 @@ export interface ProductVariation {
   active: boolean;
 }
 
+export type ProductStatus = 'draft' | 'published' | 'archived';
+
+export type StockStatus = 'In Stock' | 'Low Stock' | 'Out of Stock' | 'Backorder Allowed';
+
 export interface SkincareSpecifications {
-  skinType?: string; // e.g. "All Skin Types, Sensitive, Acne-Prone"
-  keyIngredients?: string; // e.g. "Centella Asiatica, Niacinamide 5%, Ceramide NP"
-  volume?: string; // e.g. "50ml / 1.69 fl. oz"
+  skinType?: string; // legacy string representation
+  skinTypes?: string[]; // e.g. ['Normal', 'Dry', 'Oily', 'Combination', 'Sensitive', 'All Skin Types']
+  concerns?: string[] | string; // e.g. ['Acne', 'Dryness', 'Dullness', 'Uneven Tone', 'Excess Oil', 'Dehydration', 'Barrier Repair'] or comma string
+  skinConcerns?: string[]; // alias for multi-select concerns
+  keyIngredients?: string; // e.g. "Centella Asiatica 80%, Niacinamide 5%, Ceramide NP"
+  fullIngredients?: string; // Full INCI ingredient list
+  benefits?: string; // Key clinical & cosmetic benefits
+  howToUse?: string; // Step-by-step application instructions
+  volume?: string; // Net Weight / Volume, such as "50 g" or "100 ml"
+  origin?: string; // e.g. "South Korea", "Japan", "China", "France"
+  expiryDate?: string; // Expiry date or shelf life, e.g. "2027-08 / 12M after opening"
+  warnings?: string; // Warnings and precautions
+  spfRating?: string; // applicable to sunscreen products only (e.g. "SPF 50+")
+  paRating?: string; // applicable to sunscreen products only (e.g. "PA++++")
+  attributes?: string[]; // ['Fragrance-Free', 'Alcohol-Free', 'Vegan', 'Cruelty-Free', 'Dermatologist-Tested']
   routineStep?: string; // e.g. "Step 3: Treatment & Serum (AM & PM)"
-  origin?: string; // e.g. "Made in South Korea"
-  concerns?: string; // e.g. "Acne, Barrier Repair, Glass Skin Glow"
   dermatologistTested?: boolean;
 }
 
@@ -60,19 +105,50 @@ export interface Product {
   id: string;
   name: string;
   slug: string;
-  description: string;
   category: Category;
-  basePrice: number;
-  compareAtPrice?: number;
+  brand?: string;
+  sku?: string;
+  shortDescription?: string;
+  description: string;
+  tags?: string[];
+
+  // Pricing & Currency (BDT / ৳)
+  basePrice: number; // Regular Price (৳) *
+  salePrice?: number; // Sale Price (৳), optional
+  compareAtPrice?: number; // Optional compare-at price
+  costPrice?: number; // Cost Price (৳), visible ONLY to authorized administrators
+
+  // Media
   mainImage: string;
   images: string[];
+
+  // Inventory & Stock
+  trackInventory?: boolean;
+  totalStock: number;
+  lowStockThreshold?: number;
+  allowBackorders?: boolean;
+  hasVariants?: boolean;
+  stockStatus?: StockStatus;
+
+  // Variations
   variations: ProductVariation[];
+
+  // Skincare Specifics
   specifications?: SkincareSpecifications;
+
+  // Storefront & Marketing
   featured?: boolean;
   bestseller?: boolean;
   newArrival?: boolean;
-  active: boolean;
-  totalStock: number;
+  comboOffer?: boolean;
+  active: boolean; // Published / Visible in Shop
+  status?: ProductStatus; // 'draft' | 'published' | 'archived'
+  displayPriority?: number;
+  sortOrder?: number;
+  relatedProductIds?: string[];
+  seoTitle?: string;
+  seoDescription?: string;
+
   createdAt: string;
   updatedAt?: string;
 }
@@ -181,4 +257,3 @@ export interface Review {
   createdAt: string;
   updatedAt?: string;
 }
-

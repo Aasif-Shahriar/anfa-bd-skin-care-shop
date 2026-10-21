@@ -351,7 +351,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onNavigate, onOrderS
             </div>
           </div>
 
-          {/* 3. Payment Method Selector */}
+          {/* 3. Payment Method */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-4">
             <h2 className="font-serif text-xl font-medium text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
               <Lock className="w-5 h-5 text-[#FF1493]" />
@@ -359,69 +359,30 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onNavigate, onOrderS
             </h2>
 
             <div className="space-y-3">
-              {/* Option 1: Cash on Delivery (Active) */}
-              <label
-                className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all ${
-                  paymentMethod === 'Cash on Delivery'
-                    ? 'border-[#FF1493] bg-pink-50/50 ring-1 ring-[#FF1493]'
-                    : 'border-slate-200 bg-white hover:border-pink-200'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="Cash on Delivery"
-                  checked={paymentMethod === 'Cash on Delivery'}
-                  onChange={() => setPaymentMethod('Cash on Delivery')}
-                  className="mt-1 accent-[#FF1493]"
-                />
+              {/* Sole payment option: 100% Cash on Delivery */}
+              <div className="p-4 rounded-xl border border-[#FF1493] bg-pink-50/50 ring-1 ring-[#FF1493] flex items-start gap-4">
+                <div className="w-5 h-5 rounded-full bg-[#FF1493] text-white flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                </div>
                 <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-xs text-slate-900">
-                      Cash on Delivery (Recommended)
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-semibold text-xs text-slate-900 flex items-center gap-2">
+                      <span>Cash on Delivery (Only Payment Option Available)</span>
                     </span>
-                    <span className="text-[10px] bg-[#FF1493] text-white px-2 py-0.5 rounded font-semibold uppercase">
-                      Inspect at Doorstep
+                    <span className="text-[10px] bg-[#FF1493] text-white px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider shadow-2xs">
+                      100% Doorstep Verification
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Pay safely in cash when your authentic skincare parcel arrives at your residence.
-                    You may inspect the sealed package before completing payment.
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                    Pay safely in cash when your authentic Korean skincare parcel arrives at your residence.
+                    You may inspect the outer package and sealed batch codes before completing payment with our delivery courier.
                   </p>
-                </div>
-              </label>
-
-              {/* Option 2: Online Payment / Card / Mobile Banking */}
-              <label
-                className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all ${
-                  paymentMethod === 'Card / Mobile Banking (Online)'
-                    ? 'border-[#FF1493] bg-[#FFF0F6] ring-1 ring-[#FF1493]'
-                    : 'border-slate-200 bg-white hover:border-[#FF1493]'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="Card / Mobile Banking (Online)"
-                  checked={paymentMethod === 'Card / Mobile Banking (Online)'}
-                  onChange={() => setPaymentMethod('Card / Mobile Banking (Online)')}
-                  className="mt-1 accent-[#FF1493]"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-xs text-slate-900">
-                      bKash / Nagad / Visa / Mastercard
-                    </span>
-                    <span className="text-[10px] text-[#FF1493] font-semibold bg-[#FFF0F6] px-2 py-0.5 rounded border border-[#FFC1E3]">
-                      Payment Link on Confirmation
-                    </span>
+                  <div className="mt-2 text-[11px] text-[#FF1493] font-semibold flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>No advance digital payment required. Zero risk shopping guaranteed.</span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Our team will send a verified digital payment link directly to your phone number
-                    and email upon placing your order.
-                  </p>
                 </div>
-              </label>
+              </div>
             </div>
           </div>
         </div>

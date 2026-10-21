@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Heart,
   ShoppingBag,
@@ -132,9 +132,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     }
   };
 
-  const relatedProducts = allProducts
-    .filter((p) => p.id !== product.id && p.category === product.category)
-    .slice(0, 4);
+  const relatedProducts = useMemo(() => {
+    if (product.relatedProductIds && product.relatedProductIds.length > 0) {
+      const explicitMatches = allProducts.filter((p) => product.relatedProductIds?.includes(p.id));
+      if (explicitMatches.length > 0) return explicitMatches.slice(0, 4);
+    }
+    return allProducts
+      .filter((p) => p.id !== product.id && p.category === product.category && p.status !== 'draft' && p.status !== 'archived')
+      .slice(0, 4);
+  }, [allProducts, product]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-16">
@@ -471,50 +477,103 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
             <div className="p-5 text-xs text-slate-700">
               {activeTab === 'specs' && (
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                  <div>
-                    <dt className="text-[#FF1493] font-bold">Skin Compatibility</dt>
-                    <dd className="font-semibold text-slate-900 mt-0.5">
-                      {product.specifications?.skinType || 'All Skin Types (Sensitive & Teenage Skin Safe)'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[#FF1493] font-bold">Active Ingredients</dt>
-                    <dd className="font-semibold text-slate-900 mt-0.5">
-                      {product.specifications?.keyIngredients || 'Niacinamide, Centella Asiatica, Hyaluronic Acid'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[#FF1493] font-bold">Volume / Formula Size</dt>
-                    <dd className="font-semibold text-slate-900 mt-0.5">
-                      {product.specifications?.volume || selectedVariation?.name || 'Standard Size'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[#FF1493] font-bold">Skincare Routine Step</dt>
-                    <dd className="font-semibold text-slate-900 mt-0.5">
-                      {product.specifications?.routineStep || 'Daily AM & PM Skincare Step'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[#FF1493] font-bold">Origin & Provenance</dt>
-                    <dd className="font-semibold text-slate-900 mt-0.5">
-                      {product.specifications?.origin || 'Formulated & Crafted in South Korea'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[#FF1493] font-bold">Target Concerns</dt>
-                    <dd className="font-semibold text-slate-900 mt-0.5">
-                      {product.specifications?.concerns || 'Glass skin hydration, Acne spots & Barrier repair'}
-                    </dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-[#FF1493] font-bold">Dermatologist Tested</dt>
-                    <dd className="font-semibold text-slate-900 mt-0.5">
-                      {product.specifications?.dermatologistTested !== false ? 'Verified Hypoallergenic & Non-Comedogenic' : 'Safe formula'}
-                    </dd>
-                  </div>
-                </dl>
+                <div className="space-y-4">
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                    {product.brand && (
+                      <div>
+                        <dt className="text-[#FF1493] font-bold">Brand</dt>
+                        <dd className="font-semibold text-slate-900 mt-0.5">{product.brand}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt className="text-[#FF1493] font-bold">Skin Compatibility</dt>
+                      <dd className="font-semibold text-slate-900 mt-0.5">
+                        {Array.isArray(product.specifications?.skinTypes) && product.specifications.skinTypes.length > 0
+                          ? product.specifications.skinTypes.join(', ')
+                          : product.specifications?.skinType || 'All Skin Types (Sensitive Safe)'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[#FF1493] font-bold">Target Concerns</dt>
+                      <dd className="font-semibold text-slate-900 mt-0.5">
+                        {Array.isArray(product.specifications?.skinConcerns) && product.specifications.skinConcerns.length > 0
+                          ? product.specifications.skinConcerns.join(', ')
+                          : product.specifications?.concerns || 'Hydration, Barrier Repair, Radiance'}
+                      </dd>
+                    </div>
+                    {product.specifications?.volume && (
+                      <div>
+                        <dt className="text-[#FF1493] font-bold">Net Weight / Volume</dt>
+                        <dd className="font-semibold text-slate-900 mt-0.5">{product.specifications.volume}</dd>
+                      </div>
+                    )}
+                    {product.specifications?.origin && (
+                      <div>
+                        <dt className="text-[#FF1493] font-bold">Country of Origin</dt>
+                        <dd className="font-semibold text-slate-900 mt-0.5">{product.specifications.origin}</dd>
+                      </div>
+                    )}
+                    {(product.specifications?.spfRating || product.specifications?.paRating) && (
+                      <div>
+                        <dt className="text-[#FF1493] font-bold">Sun Protection</dt>
+                        <dd className="font-semibold text-[#FF1493] mt-0.5">
+                          {[product.specifications?.spfRating, product.specifications?.paRating].filter(Boolean).join(' ')}
+                        </dd>
+                      </div>
+                    )}
+                    {product.specifications?.expiryDate && (
+                      <div>
+                        <dt className="text-[#FF1493] font-bold">Shelf Life / Expiry</dt>
+                        <dd className="font-semibold text-slate-900 mt-0.5">{product.specifications.expiryDate}</dd>
+                      </div>
+                    )}
+                    {product.specifications?.keyIngredients && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-[#FF1493] font-bold">Key Ingredients</dt>
+                        <dd className="font-medium text-slate-900 mt-0.5">{product.specifications.keyIngredients}</dd>
+                      </div>
+                    )}
+                    {product.specifications?.benefits && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-[#FF1493] font-bold">Product Benefits</dt>
+                        <dd className="text-slate-800 mt-0.5 leading-relaxed">{product.specifications.benefits}</dd>
+                      </div>
+                    )}
+                    {product.specifications?.fullIngredients && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-[#FF1493] font-bold">Full Ingredients List</dt>
+                        <dd className="text-slate-600 text-[11px] mt-0.5 leading-relaxed font-mono bg-slate-50 p-3 rounded-lg border border-slate-200">
+                          {product.specifications.fullIngredients}
+                        </dd>
+                      </div>
+                    )}
+                    {product.specifications?.warnings && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-amber-800 font-bold">Warnings &amp; Precautions</dt>
+                        <dd className="text-amber-900 text-[11px] mt-0.5 leading-relaxed bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                          {product.specifications.warnings}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+
+                  {/* Verified Attributes Badges */}
+                  {product.specifications?.attributes && product.specifications.attributes.length > 0 && (
+                    <div className="pt-3 border-t border-slate-200">
+                      <dt className="text-[#FF1493] font-bold mb-1.5">Verified Formulation Attributes</dt>
+                      <div className="flex flex-wrap gap-1.5">
+                        {product.specifications.attributes.map((attr, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] bg-pink-50 text-[#FF1493] border border-pink-200 font-bold px-2.5 py-0.5 rounded-full"
+                          >
+                            ✓ {attr}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {activeTab === 'shipping' && (
@@ -542,14 +601,25 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               )}
 
               {activeTab === 'care' && (
-                <div className="space-y-2 leading-relaxed">
-                  <p>
-                    <strong>How to apply:</strong> After cleansing and toning, dispense 2–3 drops or a dime-sized amount onto clean fingertips.
-                  </p>
-                  <p>
-                    Gently pat and press into the skin until completely absorbed. Follow with moisturizer and broad-spectrum sunscreen in daytime.
-                  </p>
-                  <p>
+                <div className="space-y-3 leading-relaxed">
+                  {product.specifications?.howToUse ? (
+                    <div>
+                      <h4 className="font-bold text-slate-900 mb-1">Recommended Usage &amp; Ritual:</h4>
+                      <p className="whitespace-pre-line text-slate-700 bg-pink-50/50 p-3 rounded-lg border border-pink-100">
+                        {product.specifications.howToUse}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p>
+                        <strong>How to apply:</strong> After cleansing and toning, dispense 2–3 drops or a dime-sized amount onto clean fingertips.
+                      </p>
+                      <p>
+                        Gently pat and press into the skin until completely absorbed. Follow with moisturizer and broad-spectrum sunscreen in daytime.
+                      </p>
+                    </>
+                  )}
+                  <p className="text-[11px] text-slate-500 pt-1">
                     Store in a cool, dry place away from direct sunlight. Always perform a quick 24-hour patch test before introducing new active formulas.
                   </p>
                 </div>
@@ -580,7 +650,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {relatedProducts.map((p) => (
+            {relatedProducts.map((p: Product) => (
               <ProductCard
                 key={p.id}
                 product={p}

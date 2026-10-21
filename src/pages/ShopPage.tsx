@@ -10,9 +10,9 @@ import {
   Sparkles,
   Droplet,
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product, EXACT_14_CATEGORIES } from '../types';
 import { ProductCard } from '../components/ProductCard';
-import { formatPrice } from '../utils/format';
+import { formatPrice, normalizeCategory } from '../utils/format';
 
 interface ShopPageProps {
   products: Product[];
@@ -40,23 +40,7 @@ export const ShopPage: React.FC<ShopPageProps> = ({
     setSelectedCategory(initialCategory || 'All');
   }, [initialCategory]);
 
-  const categories = [
-    'All',
-    'Sheet mask',
-    'Mud mask',
-    'Sleeping mask',
-    'Bubble mask',
-    'Eye mask',
-    'Lip mask',
-    'Sunscream',
-    'Bodywash',
-    'Nose strip',
-    'Blackhead remover',
-    'Makeup remover',
-    'Applicator',
-    'Foot mask',
-    'Combo offer',
-  ];
+  const categories = ['All', ...EXACT_14_CATEGORIES];
 
   const skinConcerns = [
     'All',
@@ -88,33 +72,48 @@ export const ShopPage: React.FC<ShopPageProps> = ({
   const filteredProducts = useMemo(() => {
     return products
       .filter((p) => {
-        // Category filter
+        // Exclude drafts, archived, or inactive products from public shop
+        if (p.status === 'draft' || p.status === 'archived' || p.active === false) {
+          return false;
+        }
+
+        // Category filter (normalized so Title Case and legacy match)
         if (selectedCategory === 'New') {
           if (!p.newArrival) return false;
-        } else if (selectedCategory !== 'All' && p.category !== selectedCategory) {
-          return false;
+        } else if (selectedCategory !== 'All') {
+          const normProductCat = normalizeCategory(p.category);
+          const normSelectedCat = normalizeCategory(selectedCategory);
+          if (normProductCat !== normSelectedCat) {
+            return false;
+          }
         }
 
         // Search filter
         if (searchQuery.trim()) {
           const query = searchQuery.toLowerCase();
           const matches =
-            p.name.toLowerCase().includes(query) ||
-            p.category.toLowerCase().includes(query) ||
-            p.description.toLowerCase().includes(query) ||
-            p.specifications?.keyIngredients?.toLowerCase().includes(query) ||
-            p.specifications?.concerns?.toLowerCase().includes(query);
+            p.name?.toLowerCase().includes(query) ||
+            p.category?.toLowerCase().includes(query) ||
+            p.brand?.toLowerCase().includes(query) ||
+            p.sku?.toLowerCase().includes(query) ||
+            p.tags?.some((t) => t.toLowerCase().includes(query)) ||
+            p.description?.toLowerCase().includes(query) ||
+            p.shortDescription?.toLowerCase().includes(query) ||
+            p.specifications?.keyIngredients?.toLowerCase().includes(query);
           if (!matches) return false;
         }
 
         // Skin concern filter
         if (selectedConcern !== 'All') {
           const concernLower = selectedConcern.toLowerCase();
+          const concernsText = Array.isArray(p.specifications?.concerns)
+            ? p.specifications.concerns.join(' ').toLowerCase()
+            : (p.specifications?.concerns || '').toLowerCase();
           const matchesConcern =
             p.name.toLowerCase().includes(concernLower) ||
             p.description.toLowerCase().includes(concernLower) ||
-            p.specifications?.concerns?.toLowerCase().includes(concernLower) ||
-            p.specifications?.keyIngredients?.toLowerCase().includes(concernLower);
+            concernsText.includes(concernLower) ||
+            (p.specifications?.keyIngredients || '').toLowerCase().includes(concernLower);
           if (!matchesConcern) return false;
         }
 
@@ -145,7 +144,12 @@ export const ShopPage: React.FC<ShopPageProps> = ({
         if (sortBy === 'bestseller') {
           return (b.bestseller ? 1 : 0) - (a.bestseller ? 1 : 0);
         }
-        return 0; // default featured curation order
+        if (sortBy === 'featured') {
+          const prioDiff = (b.displayPriority ?? 0) - (a.displayPriority ?? 0);
+          if (prioDiff !== 0) return prioDiff;
+          return (b.featured ? 1 : 0) - (a.featured ? 1 : 0);
+        }
+        return (b.displayPriority ?? 0) - (a.displayPriority ?? 0);
       });
   }, [products, selectedCategory, selectedConcern, searchQuery, sortBy, inStockOnly, maxPrice]);
 

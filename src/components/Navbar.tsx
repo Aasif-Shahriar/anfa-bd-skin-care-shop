@@ -105,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="bg-[#FF1493] text-white py-1.5 px-4 text-center text-[10px] sm:text-[11px] tracking-wider uppercase font-semibold flex items-center justify-center gap-2 shadow-sm">
         <Sparkles className="w-3.5 h-3.5 text-white/90 shrink-0 animate-pulse" />
         <span className="truncate">
-          100% Authentic Korean &amp; Dermatological Skincare • Delivery: Inside Dhaka 80tk | Dhaka sub-area 120tk | Outside Dhaka 150tk
+          100% Authentic Korean &amp; Chinese Skincare Products • Delivery: Inside Dhaka 80tk | Dhaka sub-area 120tk | Outside Dhaka 150tk
         </span>
         <Sparkles className="w-3.5 h-3.5 text-white/90 shrink-0 animate-pulse" />
       </div>
