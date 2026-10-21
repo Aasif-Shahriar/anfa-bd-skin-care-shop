@@ -30,6 +30,7 @@ import { Product, ProductVariation, Order, OrderStatus, Category, ProductStatus 
 import { formatPrice, slugify, calculateDiscountPercentage } from '../utils/format';
 import { OrderReceiptModal } from '../components/OrderReceiptModal';
 import { ProductFormModal } from '../components/ProductFormModal';
+import { DeleteProductWarningModal } from '../components/DeleteProductWarningModal';
 import { downloadReceiptPdf } from '../utils/pdfGenerator';
 import {
   fetchProducts,
@@ -67,6 +68,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
   // Product Add / Edit Modal State
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+
+  // Product Deletion Warning Modal State
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
   // Order Details Modal State
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
@@ -141,18 +146,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
     }
   };
 
-  // Delete product
-  const handleDeleteProduct = async (id: string, prodName: string) => {
-    if (window.confirm(`Are you sure you want to permanently delete "${prodName}" from the catalogue?`)) {
-      try {
-        await removeProduct(id);
-        addToast('Product Removed', `${prodName} deleted from Firestore.`, 'info');
-        await loadData();
-        if (onRefreshData) onRefreshData();
-      } catch (err) {
-        console.error('Failed to remove product:', err);
-        addToast('Delete Failed', 'Could not delete product.', 'error');
-      }
+  // Prompt delete warning dialog
+  const handlePromptDeleteProduct = (prod: Product) => {
+    setProductToDelete(prod);
+  };
+
+  // Confirmed delete execution after warning
+  const handleConfirmDeleteProduct = async (prod: Product) => {
+    setIsDeletingProduct(true);
+    try {
+      await removeProduct(prod.id);
+      setProducts((prev) => prev.filter((p) => p.id !== prod.id));
+      addToast(
+        'Product Deleted',
+        `"${prod.name}" was permanently deleted from the boutique catalogue.`,
+        'info'
+      );
+      setProductToDelete(null);
+      await loadData();
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      console.error('Failed to remove product:', err);
+      addToast('Delete Failed', err?.message || 'Could not delete product.', 'error');
+    } finally {
+      setIsDeletingProduct(false);
     }
   };
 
@@ -875,7 +892,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
 
                               {/* Delete product */}
                               <button
-                                onClick={() => handleDeleteProduct(prod.id, prod.name)}
+                                onClick={() => handlePromptDeleteProduct(prod)}
                                 className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                 title="Delete from Catalogue"
                               >
@@ -1061,8 +1078,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
         isOpen={isProductModalOpen}
         onClose={() => setIsProductModalOpen(false)}
         onSave={handleSaveProductSubmit}
+        onDelete={(prod) => {
+          setIsProductModalOpen(false);
+          handlePromptDeleteProduct(prod);
+        }}
         productToEdit={productToEdit}
         existingProducts={products}
+      />
+
+      {/* PERMANENT PRODUCT DELETION WARNING MODAL */}
+      <DeleteProductWarningModal
+        isOpen={Boolean(productToDelete)}
+        product={productToDelete}
+        onClose={() => setProductToDelete(null)}
+        onConfirmDelete={handleConfirmDeleteProduct}
+        isDeleting={isDeletingProduct}
       />
 
       {/* VIEW ORDER DETAILS MODAL */}

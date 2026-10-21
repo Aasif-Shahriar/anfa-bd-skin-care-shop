@@ -52,6 +52,7 @@ interface ProductFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (productData: Omit<Product, 'id'>, id?: string) => Promise<void>;
+  onDelete?: (product: Product) => void;
   productToEdit?: Product | null;
   existingProducts?: Product[];
 }
@@ -128,6 +129,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onDelete,
   productToEdit,
   existingProducts = [],
 }) => {
@@ -2339,6 +2341,19 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             >
               Clear
             </button>
+
+            {productToEdit && onDelete && (
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => onDelete(productToEdit)}
+                className="flex-1 sm:flex-none px-3.5 py-2.5 text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Permanently delete this product from catalogue"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">

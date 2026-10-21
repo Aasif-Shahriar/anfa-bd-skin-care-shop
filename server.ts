@@ -6,6 +6,7 @@ import * as dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import { initializeApp, cert, getApps, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 dotenv.config();
 
@@ -63,6 +64,11 @@ function getAdminAuth() {
     }
   }
   return getAuth();
+}
+
+function getAdminFirestore() {
+  getAdminAuth();
+  return getFirestore();
 }
 
 // Master Admin Bootstrap Secret
@@ -215,6 +221,27 @@ app.get('/api/admin/verify-token', async (req: Request, res: Response): Promise<
     });
   } catch (err: any) {
     res.status(401).json({ error: 'InvalidToken', message: err.message });
+  }
+});
+
+/**
+ * DELETE /api/admin/products/:id
+ * Server-side deletion of a product from Firestore.
+ */
+app.delete('/api/admin/products/:id', async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  if (!id) {
+    res.status(400).json({ error: 'BadRequest', message: 'Product ID is required.' });
+    return;
+  }
+
+  try {
+    const firestore = getAdminFirestore();
+    await firestore.collection('products').doc(id).delete();
+    res.status(200).json({ success: true, message: `Product ${id} deleted successfully.` });
+  } catch (err: any) {
+    console.warn(`Server-side deletion failed for product ${id}:`, err?.message || err);
+    res.status(500).json({ error: 'DeleteError', message: err.message || 'Failed to delete product.' });
   }
 });
 
