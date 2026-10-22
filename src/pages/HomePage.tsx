@@ -15,6 +15,18 @@ import {
 import { Product } from '../types';
 import { ProductCard } from '../components/ProductCard';
 import luxuryHeroImg from '../assets/images/luxury_skincare_hero_1791695789499.jpg';
+import image1 from '../assets/images/sheetmask.jpg';
+import image2 from '../assets/images/mud mask.jpg';
+import image3 from '../assets/images/sleeping mask.jpg';
+import image4 from '../assets/images/buble mask.jpg';
+import image5 from '../assets/images/eye mask.jpg';
+import image6 from '../assets/images/lip mask.jpg';
+import image7 from '../assets/images/sunscreen.jpg';
+import image8 from '../assets/images/bodywash.jpg';
+import image9 from '../assets/images/nosestrips.jpg';
+import image10 from '../assets/images/blackhead remover.jpg';
+import image11 from '../assets/images/makeup remover.jpg';
+import image12 from '../assets/images/comboset.jpeg';
 
 interface HomePageProps {
   products: Product[];
@@ -62,62 +74,62 @@ export const HomePage: React.FC<HomePageProps> = ({
     {
       name: 'Sheet mask',
       subtitle: 'Tea Tree & Calming Bamboo Sheets',
-      image: 'https://images.unsplash.com/photo-1596755389378-c31d21fd1273?auto=format&fit=crop&w=600&q=80',
+      image: image1,
     },
     {
       name: 'Mud mask',
       subtitle: 'Jeju Volcanic Mineral Clay',
-      image: 'https://images.unsplash.com/photo-1567928815116-3e46109968b6?auto=format&fit=crop&w=600&q=80',
+      image: image2,
     },
     {
       name: 'Sleeping mask',
       subtitle: 'Overnight Barrier Recharge',
-      image: 'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=600&q=80',
+      image: image3,
     },
     {
       name: 'Bubble mask',
       subtitle: 'Oxygen Charcoal Deep Detox',
-      image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80',
+      image: image4,
     },
     {
       name: 'Eye mask',
       subtitle: '24K Gold & Collagen Patches',
-      image: 'https://images.unsplash.com/photo-1512290900672-1f5be1c618d4?auto=format&fit=crop&w=600&q=80',
+      image: image5,
     },
     {
       name: 'Lip mask',
       subtitle: 'Berry Peptide Plumping Balm',
-      image: 'https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&w=600&q=80',
+      image: image6,
     },
     {
       name: 'Sunscream',
       subtitle: 'Invisible Daily SPF 50+ PA++++',
-      image: 'https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?auto=format&fit=crop&w=600&q=80',
+      image: image7,
     },
     {
       name: 'Bodywash',
       subtitle: 'Brightening Niacinamide Gel',
-      image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80',
+      image: image8,
     },
     {
       name: 'Nose strip',
       subtitle: 'Bamboo Charcoal Pore Strips',
-      image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=600&q=80',
+      image: image9,
     },
     {
       name: 'Blackhead remover',
       subtitle: 'Volcanic BHA Melting Stick',
-      image: 'https://images.unsplash.com/photo-1608248597359-0a6245e3ea1e?auto=format&fit=crop&w=600&q=80',
+      image: image10,
     },
     {
       name: 'Makeup remover',
       subtitle: 'Centella Melting Oil & Balm',
-      image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80',
+      image: image11,
     },
     {
-      name: 'Combo offer',
+      name: 'Combo set',
       subtitle: '7-Day Glass Skin Complete Set',
-      image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=600&q=80',
+      image: image12,
     },
   ];
 
@@ -343,7 +355,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <div className="lg:col-span-5 relative">
               <div className="aspect-[4/5] rounded-2xl overflow-hidden border border-[#FF1493]/40 shadow-[0_0_25px_rgba(255,20,147,0.35)]">
                 <img
-                  src="https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=1000&q=80"
+                  src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792647933/section4_blaq9t.jpg"
                   alt="ANFA BD Skincare Products"
                   className="w-full h-full object-cover"
                 />
@@ -480,12 +492,12 @@ export const HomePage: React.FC<HomePageProps> = ({
 
             <div className="grid grid-cols-2 gap-4">
               <img
-                src="https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=600&q=80"
+                src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792647934/section7p1_eczesm.jpg"
                 alt="ANFA BD Skincare 1"
                 className="w-full h-64 object-cover rounded-xl shadow-md"
               />
               <img
-                src="https://images.unsplash.com/photo-1608248597359-0a6245e3ea1e?auto=format&fit=crop&w=600&q=80"
+                src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792647937/section7p2_pesjpt.jpg"
                 alt="ANFA BD Skincare 2"
                 className="w-full h-64 object-cover rounded-xl shadow-md mt-6"
               />
