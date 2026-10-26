@@ -153,13 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex-1 lg:flex-initial text-center cursor-pointer select-none px-1 sm:px-2 min-w-0 flex items-center justify-center gap-2 sm:gap-2.5 group"
             onClick={() => onNavigate('home')}
           >
-            <div className="relative shrink-0">
-              <img
-                src={faviconImg}
-                alt="ANFA BD Brand Logo"
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border border-[#FF1493]/40 shadow-[0_0_10px_rgba(255,20,147,0.25)] group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
+        
             <div className="text-left sm:text-center">
               <span className="block font-serif text-lg sm:text-2xl lg:text-3xl font-extrabold tracking-[0.14em] sm:tracking-[0.2em] text-slate-900 uppercase group-hover:text-[#FF1493] transition-colors leading-tight truncate max-w-full">
                 ANFA BD

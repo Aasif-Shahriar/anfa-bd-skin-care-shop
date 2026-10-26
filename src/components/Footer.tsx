@@ -101,11 +101,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           {/* Brand Col */}
           <div className="md:col-span-4 space-y-4">
             <div className="flex items-center gap-3">
-              <img
-                src={faviconImg}
-                alt="ANFA BD Logo"
-                className="w-11 h-11 rounded-full object-cover border border-[#FF1493]/50 shadow-[0_0_12px_rgba(255,20,147,0.35)] shrink-0"
-              />
+            
               <div>
                 <span className="font-serif text-xl sm:text-2xl tracking-[0.14em] sm:tracking-[0.2em] font-medium text-white uppercase block leading-tight">
                   ANFA BD
