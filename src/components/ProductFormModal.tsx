@@ -38,6 +38,7 @@ import {
   StockStatus,
   SkincareSpecifications,
 } from '../types';
+import { BangladeshFlag } from './BangladeshFlag';
 import {
   formatPrice,
   calculateDiscountPercentage,
@@ -1090,7 +1091,13 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                   <h3 className="font-serif text-base font-bold text-slate-900 flex items-center gap-2">
                     <DollarSign className="w-5 h-5 text-[#FF1493]" />
-                    <span>Pricing &amp; Margins (BDT ৳)</span>
+                    <span className="flex items-center gap-1.5">
+                      <span>Pricing &amp; Margins</span>
+                      <span className="inline-flex items-center gap-1 text-xs text-[#FF1493] bg-[#FFF0F6] px-2 py-0.5 rounded-md border border-[#FFC1E3]">
+                        <BangladeshFlag className="w-3.5 h-2 shadow-2xs" />
+                        <span>BDT ৳</span>
+                      </span>
+                    </span>
                   </h3>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-slate-500">Live Discount:</span>

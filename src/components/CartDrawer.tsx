@@ -3,6 +3,7 @@ import { X, Trash2, ArrowRight, ShoppingBag, ShieldCheck, Truck, Plus, Minus } f
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../utils/format';
 import { DELIVERY_ZONES, DeliveryZoneOption } from '../types';
+import { BangladeshFlag } from './BangladeshFlag';
 
 interface CartDrawerProps {
   onCheckout: () => void;
@@ -203,7 +204,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ onCheckout, onViewBag })
                   </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-100 text-sm font-semibold text-slate-900">
-                  <span>Total (BDT)</span>
+                  <span className="flex items-center gap-1.5">
+                    <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+                    <span>Total (BDT ৳)</span>
+                  </span>
                   <span className="text-[#FF1493] font-serif text-lg font-bold">{formatPrice(total)}</span>
                 </div>
               </div>

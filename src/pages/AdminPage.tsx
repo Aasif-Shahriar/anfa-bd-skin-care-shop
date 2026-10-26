@@ -43,6 +43,7 @@ import {
   updateOrderStatus,
   computeOrderMetrics,
 } from '../services/orderService';
+import { BangladeshFlag } from '../components/BangladeshFlag';
 
 interface AdminPageProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -693,7 +694,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate, onRefreshData 
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 uppercase tracking-wider font-semibold">
                     <th className="py-3.5 px-4">Product &amp; SKU</th>
                     <th className="py-3.5 px-4">Category &amp; Brand</th>
-                    <th className="py-3.5 px-4">Pricing (BDT)</th>
+                    <th className="py-3.5 px-4">
+                      <span className="inline-flex items-center gap-1.5">
+                        <BangladeshFlag className="w-3.5 h-2 shadow-2xs" />
+                        <span>Pricing (BDT ৳)</span>
+                      </span>
+                    </th>
                     <th className="py-3.5 px-4">Stock &amp; Variants</th>
                     <th className="py-3.5 px-4">Visibility</th>
                     <th className="py-3.5 px-4 text-right">Actions</th>

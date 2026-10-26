@@ -11,6 +11,8 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { EXACT_14_CATEGORIES } from '../types';
+import faviconImg from '../assets/images/favicon.jpg';
+import { BangladeshFlag } from './BangladeshFlag';
 
 interface FooterProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -98,12 +100,21 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-12">
           {/* Brand Col */}
           <div className="md:col-span-4 space-y-4">
-            <span className="font-serif text-xl sm:text-2xl tracking-[0.14em] sm:tracking-[0.2em] font-medium text-white uppercase block">
-              ANFA BD
-            </span>
-            <span className="block text-[8.5px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em] text-[#FF1493] font-bold uppercase">
-              PREMIUM GIRLS SKIN CARE BOUTIQUE
-            </span>
+            <div className="flex items-center gap-3">
+              <img
+                src={faviconImg}
+                alt="ANFA BD Logo"
+                className="w-11 h-11 rounded-full object-cover border border-[#FF1493]/50 shadow-[0_0_12px_rgba(255,20,147,0.35)] shrink-0"
+              />
+              <div>
+                <span className="font-serif text-xl sm:text-2xl tracking-[0.14em] sm:tracking-[0.2em] font-medium text-white uppercase block leading-tight">
+                  ANFA BD
+                </span>
+                <span className="block text-[8.5px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em] text-[#FF1493] font-bold uppercase">
+                  PREMIUM GIRLS SKIN CARE BOUTIQUE
+                </span>
+              </div>
+            </div>
             <p className="text-xs text-pink-100/80 leading-relaxed pt-2">
               Curating genuine Korean and dermatologist-grade skincare formulas for girls in Bangladesh.
               Low profits and customer satisfaction with authentic botanical glass-skin formulas.
@@ -242,9 +253,12 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               </form>
             )}
 
-            {/* Cash on Delivery only display */}
-            <div className="pt-2 flex items-center gap-2 text-xs text-pink-200">
-              <span className="text-pink-300/70">Payment Accepted:</span>
+            {/* Cash on Delivery & BDT Currency with Bangladesh Flag */}
+            <div className="pt-2 flex flex-wrap items-center gap-2 text-xs text-pink-200">
+              <span className="text-[#FF1493] font-bold bg-[#250314] px-2.5 py-1 rounded-md border border-[#FF1493]/40 shadow-xs flex items-center gap-1.5">
+                <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+                <span>BDT (৳)</span>
+              </span>
               <span className="text-[#FF1493] font-bold bg-[#250314] px-2.5 py-1 rounded-md border border-[#FF1493]/40 shadow-xs flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>100% Cash on Delivery Only</span>

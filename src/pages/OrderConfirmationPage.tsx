@@ -15,6 +15,7 @@ import { Order } from '../types';
 import { formatPrice } from '../utils/format';
 import { OrderReceiptModal } from '../components/OrderReceiptModal';
 import { downloadReceiptPdf } from '../utils/pdfGenerator';
+import { BangladeshFlag } from '../components/BangladeshFlag';
 
 interface OrderConfirmationPageProps {
   order: Order;
@@ -241,7 +242,10 @@ export const OrderConfirmationPage: React.FC<OrderConfirmationPageProps> = ({
               <span>{order.shippingFee === 0 ? 'Free Delivery' : formatPrice(order.shippingFee)}</span>
             </div>
             <div className="flex justify-between text-base font-semibold text-slate-900 pt-2 border-t border-slate-100">
-              <span>Total Payable</span>
+              <span className="flex items-center gap-1.5">
+                <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+                <span>Total Payable (BDT ৳)</span>
+              </span>
               <span className="font-serif text-xl font-bold text-[#FF1493]">
                 {formatPrice(order.total)}
               </span>

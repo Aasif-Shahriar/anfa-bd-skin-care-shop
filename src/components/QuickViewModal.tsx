@@ -3,6 +3,7 @@ import { X, Heart, ShoppingBag, ShieldCheck, ArrowRight, Check } from 'lucide-re
 import { Product, ProductVariation } from '../types';
 import { formatPrice, calculateDiscountPercentage } from '../utils/format';
 import { useCart } from '../context/CartContext';
+import { BangladeshFlag } from './BangladeshFlag';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -148,8 +149,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               {product.name}
             </h2>
 
-            {/* Price */}
-            <div className="flex items-baseline gap-3 mb-4">
+            {/* Price with Bangladesh Flag */}
+            <div className="flex flex-wrap items-baseline gap-3 mb-4">
               <span className="font-serif text-2xl font-bold text-[#FF1493]">
                 {formatPrice(currentPrice)}
               </span>
@@ -158,6 +159,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   {formatPrice(product.compareAtPrice)}
                 </span>
               )}
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#FF1493] bg-[#FFF0F6] px-2 py-0.5 rounded-full border border-[#FFC1E3]">
+                <BangladeshFlag className="w-3.5 h-2 shadow-2xs" />
+                <span>BDT (৳)</span>
+              </span>
             </div>
 
             {/* Description */}

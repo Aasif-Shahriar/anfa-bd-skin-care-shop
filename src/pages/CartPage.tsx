@@ -3,6 +3,7 @@ import { Trash2, Plus, Minus, ArrowRight, ShoppingBag, ShieldCheck, Sparkles, Ar
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../utils/format';
 import { DELIVERY_ZONES, DeliveryZoneOption } from '../types';
+import { BangladeshFlag } from '../components/BangladeshFlag';
 
 interface CartPageProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -237,7 +238,10 @@ export const CartPage: React.FC<CartPageProps> = ({ onNavigate, onProceedToCheck
             )}
 
             <div className="border-t border-slate-200 pt-4 flex justify-between items-baseline text-base font-semibold text-slate-900">
-              <span>Grand Total (BDT)</span>
+              <span className="flex items-center gap-1.5">
+                <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+                <span>Grand Total (BDT ৳)</span>
+              </span>
               <span className="font-serif text-2xl font-bold text-[#FF1493]">
                 {formatPrice(finalTotal)}
               </span>

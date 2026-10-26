@@ -27,6 +27,9 @@ import image9 from '../assets/images/nosestrips.jpg';
 import image10 from '../assets/images/blackhead remover.jpg';
 import image11 from '../assets/images/makeup remover.jpg';
 import image12 from '../assets/images/comboset.jpeg';
+import section4Img from '../assets/images/section4.jpg';
+import section7p1Img from '../assets/images/section7p1.jpg';
+import section7p2Img from '../assets/images/section7p2.jpg';
 
 interface HomePageProps {
   products: Product[];
@@ -127,7 +130,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       image: image11,
     },
     {
-      name: 'Combo set',
+      name: 'Combo offer',
       subtitle: '7-Day Glass Skin Complete Set',
       image: image12,
     },
@@ -205,7 +208,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               {/* Main Image Stage */}
               <div className="relative w-full max-w-lg aspect-[4/3] rounded-3xl overflow-hidden border border-pink-400/30 shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_30px_rgba(255,20,147,0.3)] group">
                 <img
-                  src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792564765/441ebc7b-70e6-4d48-b038-c1888c32a078.png"
+                  src={luxuryHeroImg}
                   alt="ANFA BD Skincare Collection - Low profits and customer satisfaction"
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-1000 ease-out"
                 />
@@ -355,7 +358,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <div className="lg:col-span-5 relative">
               <div className="aspect-[4/5] rounded-2xl overflow-hidden border border-[#FF1493]/40 shadow-[0_0_25px_rgba(255,20,147,0.35)]">
                 <img
-                  src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792647933/section4_blaq9t.jpg"
+                  src={section4Img}
                   alt="ANFA BD Skincare Products"
                   className="w-full h-full object-cover"
                 />
@@ -492,12 +495,12 @@ export const HomePage: React.FC<HomePageProps> = ({
 
             <div className="grid grid-cols-2 gap-4">
               <img
-                src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792647934/section7p1_eczesm.jpg"
+                src={section7p1Img}
                 alt="ANFA BD Skincare 1"
                 className="w-full h-64 object-cover rounded-xl shadow-md"
               />
               <img
-                src="https://res.cloudinary.com/dnh9rdh01/image/upload/v1792647937/section7p2_pesjpt.jpg"
+                src={section7p2Img}
                 alt="ANFA BD Skincare 2"
                 className="w-full h-64 object-cover rounded-xl shadow-md mt-6"
               />

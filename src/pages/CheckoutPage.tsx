@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { CustomerInfo, Order, DELIVERY_ZONES, DeliveryZone, DeliveryZoneOption } from '../types';
 import { formatPrice, generateOrderNumber } from '../utils/format';
 import { createOrder } from '../services/orderService';
+import { BangladeshFlag } from '../components/BangladeshFlag';
 
 interface CheckoutPageProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -453,7 +454,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onNavigate, onOrderS
             </div>
 
             <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline text-base font-semibold text-slate-900">
-              <span>Grand Total</span>
+              <span className="flex items-center gap-1.5">
+                <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+                <span>Grand Total (BDT ৳)</span>
+              </span>
               <span className="font-serif text-2xl font-bold text-[#FF1493]">
                 {formatPrice(total)}
               </span>

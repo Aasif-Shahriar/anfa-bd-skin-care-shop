@@ -20,6 +20,8 @@ import {
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { Category, ALL_CATEGORIES } from '../types';
+import faviconImg from '../assets/images/favicon.jpg';
+import { BangladeshFlag } from './BangladeshFlag';
 
 interface NavbarProps {
   activeTab: string;
@@ -146,24 +148,34 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Center: Brand Identity with Responsive Scaling for Small Devices */}
+          {/* Center: Brand Identity with Brand Asset Photo & Responsive Typography */}
           <div
-            className="flex-1 lg:flex-initial text-center cursor-pointer select-none px-1 sm:px-2 min-w-0 flex flex-col items-center justify-center"
+            className="flex-1 lg:flex-initial text-center cursor-pointer select-none px-1 sm:px-2 min-w-0 flex items-center justify-center gap-2 sm:gap-2.5 group"
             onClick={() => onNavigate('home')}
           >
-            <span className="block font-serif text-lg sm:text-2xl lg:text-3xl font-extrabold tracking-[0.14em] sm:tracking-[0.2em] text-slate-900 uppercase hover:text-[#FF1493] transition-colors leading-tight truncate max-w-full">
-              ANFA BD
-            </span>
-            <span className="block text-[8px] sm:text-[9px] tracking-[0.18em] sm:tracking-[0.28em] text-[#FF1493] font-bold uppercase -mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
-              GIRLS SKIN CARE BOUTIQUE
-            </span>
+            <div className="relative shrink-0">
+              <img
+                src={faviconImg}
+                alt="ANFA BD Brand Logo"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border border-[#FF1493]/40 shadow-[0_0_10px_rgba(255,20,147,0.25)] group-hover:scale-105 transition-transform duration-300"
+              />
+            </div>
+            <div className="text-left sm:text-center">
+              <span className="block font-serif text-lg sm:text-2xl lg:text-3xl font-extrabold tracking-[0.14em] sm:tracking-[0.2em] text-slate-900 uppercase group-hover:text-[#FF1493] transition-colors leading-tight truncate max-w-full">
+                ANFA BD
+              </span>
+              <span className="block text-[8px] sm:text-[9px] tracking-[0.18em] sm:tracking-[0.28em] text-[#FF1493] font-bold uppercase -mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
+                GIRLS SKIN CARE BOUTIQUE
+              </span>
+            </div>
           </div>
 
           {/* Right: Currency, Wishlist, Account, Cart */}
           <div className="flex items-center justify-end w-auto lg:w-1/4 gap-1 sm:gap-2.5 shrink-0">
-            {/* Currency Pill */}
-            <div className="hidden sm:flex items-center text-[10px] font-semibold text-[#FF1493] px-2.5 py-0.5 bg-[#FFF0F6] rounded-full border border-[#FFC1E3]">
-              BDT (৳)
+            {/* Currency Pill with Bangladesh Flag beside BDT (৳) */}
+            <div className="hidden sm:flex items-center gap-1.5 text-[10px] font-semibold text-[#FF1493] px-2.5 py-1 bg-[#FFF0F6] rounded-full border border-[#FFC1E3] shadow-2xs select-none">
+              <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+              <span>BDT (৳)</span>
             </div>
 
             {/* Wishlist */}
@@ -382,13 +394,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="w-4/5 max-w-sm bg-white h-full shadow-2xl p-6 flex flex-col justify-between overflow-y-auto">
             <div>
               <div className="flex items-center justify-between pb-5 border-b border-slate-200">
-                <div className="min-w-0">
-                  <span className="font-serif text-lg sm:text-xl tracking-[0.14em] sm:tracking-[0.18em] font-bold text-slate-900 uppercase block truncate">
-                    ANFA BD
-                  </span>
-                  <span className="block text-[8px] sm:text-[9px] tracking-[0.18em] sm:tracking-[0.24em] text-[#FF1493] font-bold uppercase whitespace-nowrap">
-                    GIRLS SKIN CARE BOUTIQUE
-                  </span>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <img
+                    src={faviconImg}
+                    alt="ANFA BD"
+                    className="w-9 h-9 rounded-full object-cover border border-[#FF1493]/40 shadow-xs shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <span className="font-serif text-lg sm:text-xl tracking-[0.14em] sm:tracking-[0.18em] font-bold text-slate-900 uppercase block truncate">
+                      ANFA BD
+                    </span>
+                    <span className="block text-[8px] sm:text-[9px] tracking-[0.18em] sm:tracking-[0.24em] text-[#FF1493] font-bold uppercase whitespace-nowrap">
+                      GIRLS SKIN CARE BOUTIQUE
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -510,10 +529,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
-            {/* Bottom info */}
-            <div className="pt-4 border-t border-slate-200 text-[11px] text-slate-500">
+            {/* Bottom info with Bangladesh Flag beside BDT (৳) */}
+            <div className="pt-4 border-t border-slate-200 text-[11px] text-slate-500 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[#FF1493] font-semibold text-xs">
+                <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+                <span>BDT (৳) • Official Currency</span>
+              </div>
               <p className="font-semibold text-slate-800">ANFA BD Helpline</p>
-              <p>Cash on Delivery • Banani, Dhaka</p>
+              <p>Cash on Delivery • Mirpur, Dhaka</p>
             </div>
           </div>
           <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)} />

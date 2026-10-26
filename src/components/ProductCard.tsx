@@ -30,6 +30,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         }
   );
 
+  React.useEffect(() => {
+    if (product.variations && product.variations.length > 0) {
+      setSelectedVariation(product.variations[0]);
+    }
+  }, [product.id, product.variations]);
+
   const [isHovered, setIsHovered] = useState(false);
 
   const isWishlisted = isInWishlist(product.id);

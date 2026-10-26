@@ -19,6 +19,7 @@ import { formatPrice, calculateDiscountPercentage } from '../utils/format';
 import { useCart } from '../context/CartContext';
 import { ProductCard } from '../components/ProductCard';
 import { ProductReviewsSection } from '../components/ProductReviewsSection';
+import { BangladeshFlag } from '../components/BangladeshFlag';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -293,8 +294,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               </button>
             </div>
 
-            {/* Price display */}
-            <div className="flex items-baseline gap-3 mt-4">
+            {/* Price display with Bangladesh Flag beside BDT */}
+            <div className="flex flex-wrap items-baseline gap-3 mt-4">
               <span className="font-serif text-3xl font-bold text-slate-900">
                 {formatPrice(currentPrice)}
               </span>
@@ -303,8 +304,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   {formatPrice(product.compareAtPrice)}
                 </span>
               )}
-              <span className="text-xs text-[#FF1493] font-semibold bg-[#FFF0F6] px-2.5 py-0.5 rounded border border-[#FFC1E3]">
-                VAT / Taxes Included
+              <span className="inline-flex items-center gap-1.5 text-xs text-[#FF1493] font-semibold bg-[#FFF0F6] px-2.5 py-1 rounded-full border border-[#FFC1E3]">
+                <BangladeshFlag className="w-3.5 h-2 shadow-2xs" />
+                <span>BDT (৳) • VAT Included</span>
               </span>
             </div>
           </div>

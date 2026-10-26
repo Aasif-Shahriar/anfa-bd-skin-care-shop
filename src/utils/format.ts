@@ -79,6 +79,6 @@ export function normalizeCategory(cat: string): string {
   if (clean === 'makeupremover') return 'makeupremover';
   if (clean === 'applicator') return 'applicator';
   if (clean === 'footmask') return 'footmask';
-  if (clean === 'combooffer') return 'combooffer';
+  if (clean === 'combooffer' || clean === 'comboset' || clean === 'combo') return 'combooffer';
   return clean;
 }

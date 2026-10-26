@@ -20,6 +20,7 @@ import { trackOrderByReferenceAndEmail } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { OrderReceiptModal } from '../components/OrderReceiptModal';
 import { downloadReceiptPdf } from '../utils/pdfGenerator';
+import { BangladeshFlag } from '../components/BangladeshFlag';
 
 interface OrderTrackingPageProps {
   initialOrderId?: string;
@@ -383,7 +384,10 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between text-base font-semibold text-slate-900 pt-2 border-t border-slate-100">
-                  <span>Total (BDT)</span>
+                  <span className="flex items-center gap-1.5">
+                    <BangladeshFlag className="w-4 h-2.5 shadow-2xs" />
+                    <span>Total (BDT ৳)</span>
+                  </span>
                   <span className="font-serif text-xl font-bold text-[#FF1493]">
                     {formatPrice(trackedOrder.total)}
                   </span>
