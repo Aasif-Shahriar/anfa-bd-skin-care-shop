@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider, useCart } from './context/CartContext';
+import { AlertTriangle, ExternalLink, X } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
@@ -20,6 +21,7 @@ import { Product, ProductVariation, Order } from './types';
 import { fetchProducts } from './services/productService';
 
 function AppContent() {
+  const { authError, clearAuthError } = useAuth();
   const [currentPage, setCurrentPage] = useState<string>('home');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -92,6 +94,38 @@ function AppContent() {
         onNavigate={handleNavigate}
         onOpenSearch={() => setIsSearchOpen(true)}
       />
+
+      {/* Auth Error Banner with direct link for Unauthorized Domain */}
+      {authError && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-xs md:text-sm text-amber-900 shadow-sm transition-all">
+          <div className="max-w-7xl mx-auto flex items-start md:items-center justify-between gap-3">
+            <div className="flex items-start md:items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-amber-600 shrink-0 mt-0.5 md:mt-0" />
+              <div>
+                <span className="font-semibold">{authError}</span>
+                <span className="block md:inline md:ml-2 text-amber-800">
+                  <a
+                    href="https://console.firebase.google.com/project/gen-lang-client-0282419252/authentication/settings"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline font-semibold hover:text-amber-950 inline-flex items-center gap-1"
+                  >
+                    Open Firebase Console Settings
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={clearAuthError}
+              className="text-amber-600 hover:text-amber-900 p-1 rounded transition-colors"
+              title="Dismiss warning"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1">

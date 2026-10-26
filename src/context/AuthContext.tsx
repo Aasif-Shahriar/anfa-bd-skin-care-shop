@@ -17,6 +17,8 @@ interface AuthContextType {
   claims: Record<string, any>;
   loading: boolean;
   isSigningIn: boolean;
+  authError: string | null;
+  clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   updateProfileData: (data: Partial<UserProfile>) => Promise<void>;
@@ -30,6 +32,8 @@ const AuthContext = createContext<AuthContextType>({
   claims: {},
   loading: true,
   isSigningIn: false,
+  authError: null,
+  clearAuthError: () => {},
   signInWithGoogle: async () => {},
   signOut: async () => {},
   updateProfileData: async () => {},
@@ -43,7 +47,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [claims, setClaims] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const isSigningInRef = useRef<boolean>(false);
+
+  const clearAuthError = () => setAuthError(null);
 
   // Designated administrative accounts
   const ADMIN_EMAILS = ['asif.al.azad201m@gmail.com', 'faria201237@gmail.com'];
@@ -120,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSigningIn(true);
 
     try {
+      setAuthError(null);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
@@ -135,7 +143,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      console.warn('Google sign-in notice:', error?.message || error);
+      if (errorCode === 'auth/unauthorized-domain') {
+        const msg = "Domain unauthorized. Add 'localhost' to Authorized Domains in Firebase Console (Authentication > Settings > Authorized domains). Do not include http:// or ports.";
+        console.error(
+          `Firebase Auth Unauthorized Domain Error: ${msg}\nDirect Console link: https://console.firebase.google.com/project/gen-lang-client-0282419252/authentication/settings`
+        );
+        setAuthError(msg);
+        return;
+      }
+
+      const fallbackMsg = error?.message || 'Google sign-in could not be completed.';
+      console.warn('Google sign-in notice:', fallbackMsg);
+      setAuthError(fallbackMsg);
     } finally {
       isSigningInRef.current = false;
       setIsSigningIn(false);
@@ -184,6 +203,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         claims,
         loading,
         isSigningIn,
+        authError,
+        clearAuthError,
         signInWithGoogle,
         signOut,
         updateProfileData,
