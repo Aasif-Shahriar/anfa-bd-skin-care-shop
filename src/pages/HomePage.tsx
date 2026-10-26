@@ -30,6 +30,7 @@ import image12 from '../assets/images/comboset.jpeg';
 import section4Img from '../assets/images/section4.jpg';
 import section7p1Img from '../assets/images/section7p1.jpg';
 import section7p2Img from '../assets/images/section7p2.jpg';
+import heroImg from '../assets/images/anfa-hero.jpeg';
 
 interface HomePageProps {
   products: Product[];
@@ -208,7 +209,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               {/* Main Image Stage */}
               <div className="relative w-full max-w-lg aspect-[4/3] rounded-3xl overflow-hidden border border-pink-400/30 shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_30px_rgba(255,20,147,0.3)] group">
                 <img
-                  src={luxuryHeroImg}
+                  src={heroImg}
                   alt="ANFA BD Skincare Collection - Low profits and customer satisfaction"
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-1000 ease-out"
                 />
