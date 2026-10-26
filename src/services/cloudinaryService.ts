@@ -33,6 +33,13 @@ export function validateImageFile(file: File): FileValidationResult {
     return { valid: false, error: 'No file selected.' };
   }
 
+  if (file.size === 0) {
+    return {
+      valid: false,
+      error: 'The selected image file is empty (0 bytes). Please select a valid photo.',
+    };
+  }
+
   const fileType = file.type?.toLowerCase() || '';
   const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
 
@@ -61,7 +68,13 @@ export function validateImageFile(file: File): FileValidationResult {
  * Retrieves the current Firebase user ID token to authenticate admin requests on the server.
  */
 async function getAdminAuthToken(): Promise<string> {
-  const currentUser = auth.currentUser;
+  let currentUser = auth.currentUser;
+  if (!currentUser) {
+    // Wait briefly for auth state to finish restoring from localStorage
+    await new Promise((r) => setTimeout(r, 600));
+    currentUser = auth.currentUser;
+  }
+
   if (!currentUser) {
     throw new Error('Authentication required: You must be signed in as an administrator to upload product images.');
   }
@@ -101,24 +114,34 @@ export function uploadProductImage(
       }
 
       xhr.onload = () => {
+        let isJson = false;
+        let jsonRes: any = null;
+        try {
+          jsonRes = JSON.parse(xhr.responseText);
+          isJson = true;
+        } catch {
+          isJson = false;
+        }
+
         if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.success && response.image) {
-              if (onProgress) onProgress(100);
-              resolve(response.image);
-            } else {
-              reject(new Error(response.message || 'Server upload failed without image details.'));
-            }
-          } catch (err) {
-            reject(new Error('Invalid response received from image upload server.'));
+          if (isJson && jsonRes?.success && jsonRes?.image) {
+            if (onProgress) onProgress(100);
+            resolve(jsonRes.image);
+          } else if (isJson && jsonRes?.message) {
+            reject(new Error(jsonRes.message));
+          } else {
+            console.error('Non-JSON response from upload server:', xhr.responseText.substring(0, 300));
+            reject(
+              new Error(
+                'Invalid response received from upload server. Please make sure you are signed in as an administrator (asif.al.azad201m@gmail.com).'
+              )
+            );
           }
         } else {
-          try {
-            const errRes = JSON.parse(xhr.responseText);
-            reject(new Error(errRes.message || `Upload failed with status code ${xhr.status}`));
-          } catch {
-            reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText}`));
+          if (isJson && jsonRes?.message) {
+            reject(new Error(jsonRes.message));
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText || 'Server Error'}`));
           }
         }
       };
