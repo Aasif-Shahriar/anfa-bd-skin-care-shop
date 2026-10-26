@@ -121,6 +121,8 @@ export interface Product {
   // Media
   mainImage: string;
   images: string[];
+  mainImagePublicId?: string;
+  imagePublicIds?: string[];
 
   // Inventory & Stock
   trackInventory?: boolean;

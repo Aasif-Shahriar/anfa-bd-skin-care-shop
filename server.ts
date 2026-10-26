@@ -7,13 +7,40 @@ import nodemailer from 'nodemailer';
 import { initializeApp, cert, getApps, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
 
 dotenv.config();
+
+// Cloudinary Configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dnh9rdh01',
+  api_key: process.env.CLOUDINARY_API_KEY || '832237821847377',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '',
+  secure: true,
+});
+
+// Configure Multer for in-memory file uploads with 5MB ceiling
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5 MB max per image
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif', 'image/gif'];
+    if (allowed.includes(file.mimetype.toLowerCase())) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid image format. Supported formats: JPG, JPEG, PNG, WebP, AVIF, GIF.'));
+    }
+  },
+});
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Project ID from config
 let projectId = 'gen-lang-client-0282419252';
@@ -224,9 +251,171 @@ app.get('/api/admin/verify-token', async (req: Request, res: Response): Promise<
   }
 });
 
+// Designated administrative emails
+const ADMIN_EMAILS = ['asif.al.azad201m@gmail.com', 'faria201237@gmail.com'];
+
+/**
+ * Validates that the request comes from an authenticated administrator via Firebase ID token.
+ */
+async function verifyAdminCaller(req: Request): Promise<{ uid: string; email?: string } | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  const idToken = authHeader.split('Bearer ')[1];
+  try {
+    const auth = getAdminAuth();
+    const decoded = await auth.verifyIdToken(idToken);
+    const email = decoded.email?.toLowerCase();
+    const isDesignatedAdmin = Boolean(email && ADMIN_EMAILS.includes(email));
+    const isAdmin = decoded.admin === true || isDesignatedAdmin;
+    if (!isAdmin) return null;
+    return { uid: decoded.uid, email: decoded.email };
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * POST /api/admin/cloudinary/upload
+ * Securely uploads a product image to Cloudinary (folder: anfa-bd/products).
+ * Enforces admin authorization, 5MB file size limit, and supported image formats.
+ */
+app.post(
+  '/api/admin/cloudinary/upload',
+  (req, res, next) => {
+    imageUpload.single('file')(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            error: 'FileSizeLimit',
+            message: 'Image exceeds maximum limit of 5 MB. Please upload a smaller image.',
+          });
+        }
+        return res.status(400).json({ error: 'UploadError', message: err.message });
+      } else if (err) {
+        return res.status(400).json({ error: 'UploadError', message: err.message });
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const admin = await verifyAdminCaller(req);
+    if (!admin) {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'Administrator authorization required for image upload operations.',
+      });
+      return;
+    }
+
+    try {
+      let uploadResult: any;
+
+      if (req.file) {
+        // Multipart file buffer upload
+        const buffer = req.file.buffer;
+        uploadResult = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'anfa-bd/products',
+              resource_type: 'image',
+              transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+            },
+            (error, result) => {
+              if (error) return reject(error);
+              resolve(result);
+            }
+          );
+          stream.end(buffer);
+        });
+      } else if (req.body?.image) {
+        // Base64 data URL upload
+        const imageStr = req.body.image;
+        if (typeof imageStr !== 'string' || !imageStr.startsWith('data:image/')) {
+          res.status(400).json({ error: 'BadRequest', message: 'Invalid image data format.' });
+          return;
+        }
+
+        uploadResult = await cloudinary.uploader.upload(imageStr, {
+          folder: 'anfa-bd/products',
+          resource_type: 'image',
+          transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+        });
+      } else {
+        res.status(400).json({ error: 'BadRequest', message: 'No file or image data provided.' });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        image: {
+          url: uploadResult.secure_url || uploadResult.url,
+          secureUrl: uploadResult.secure_url || uploadResult.url,
+          publicId: uploadResult.public_id,
+          format: uploadResult.format,
+          width: uploadResult.width,
+          height: uploadResult.height,
+          bytes: uploadResult.bytes,
+        },
+      });
+    } catch (err: any) {
+      console.error('Cloudinary upload failure:', err);
+      if (
+        err?.http_code === 401 ||
+        err?.message?.includes('api_secret') ||
+        err?.message?.includes('Invalid Signature')
+      ) {
+        res.status(401).json({
+          error: 'CloudinaryAuthError',
+          message:
+            'Cloudinary authentication failed: API Secret mismatch. Please verify CLOUDINARY_API_SECRET in your server environment.',
+        });
+        return;
+      }
+      res.status(500).json({
+        error: 'UploadFailed',
+        message: err?.message || 'Failed to upload image to Cloudinary.',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/cloudinary/delete
+ * Deletes an asset from Cloudinary when an administrator removes it.
+ */
+app.post('/api/admin/cloudinary/delete', async (req: Request, res: Response): Promise<void> => {
+  const admin = await verifyAdminCaller(req);
+  if (!admin) {
+    res.status(403).json({
+      error: 'Forbidden',
+      message: 'Administrator authorization required for image deletion.',
+    });
+    return;
+  }
+
+  const { publicId } = req.body;
+  if (!publicId || typeof publicId !== 'string') {
+    res.status(400).json({ error: 'BadRequest', message: 'Valid publicId string is required.' });
+    return;
+  }
+
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, { invalidate: true });
+    res.status(200).json({ success: true, result });
+  } catch (err: any) {
+    console.warn(`Cloudinary asset deletion error for ${publicId}:`, err);
+    res.status(500).json({
+      error: 'DeleteFailed',
+      message: err?.message || 'Failed to delete asset from Cloudinary.',
+    });
+  }
+});
+
 /**
  * DELETE /api/admin/products/:id
- * Server-side deletion of a product from Firestore.
+ * Server-side deletion of a product from Firestore and cleanup of associated Cloudinary assets.
  */
 app.delete('/api/admin/products/:id', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
@@ -237,7 +426,34 @@ app.delete('/api/admin/products/:id', async (req: Request, res: Response): Promi
 
   try {
     const firestore = getAdminFirestore();
-    await firestore.collection('products').doc(id).delete();
+    const docRef = firestore.collection('products').doc(id);
+    const snap = await docRef.get();
+
+    if (snap.exists) {
+      const data = snap.data();
+      const publicIds: string[] = [];
+      if (data?.mainImagePublicId && typeof data.mainImagePublicId === 'string') {
+        publicIds.push(data.mainImagePublicId);
+      }
+      if (Array.isArray(data?.imagePublicIds)) {
+        data.imagePublicIds.forEach((pid: any) => {
+          if (typeof pid === 'string' && pid && !publicIds.includes(pid)) {
+            publicIds.push(pid);
+          }
+        });
+      }
+
+      // Cleanup Cloudinary assets safely
+      for (const pid of publicIds) {
+        try {
+          await cloudinary.uploader.destroy(pid, { invalidate: true });
+        } catch (cErr) {
+          console.warn(`Failed cleaning up Cloudinary image ${pid}:`, cErr);
+        }
+      }
+    }
+
+    await docRef.delete();
     res.status(200).json({ success: true, message: `Product ${id} deleted successfully.` });
   } catch (err: any) {
     console.warn(`Server-side deletion failed for product ${id}:`, err?.message || err);

@@ -79,25 +79,20 @@ async function createOptimizedDataUrl(file: File, maxWidth = 1200, maxHeight = 1
   });
 }
 
+import { uploadProductImage, uploadMultipleProductImages, deleteCloudinaryAsset } from './cloudinaryService';
+export { deleteCloudinaryAsset };
+
 export async function uploadImageToStorage(file: File, folder = 'products'): Promise<string> {
   const validation = validateImageFile(file);
   if (!validation.valid) {
     throw new Error(validation.error || 'Invalid image file');
   }
 
-  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const timestamp = Date.now();
-  const filePath = `${folder}/${timestamp}_${sanitizedName}`;
-
   try {
-    const storageRef = ref(storage, filePath);
-    const snapshot = await uploadBytes(storageRef, file, {
-      contentType: file.type,
-    });
-    const downloadUrl = await getDownloadURL(snapshot.ref);
-    return downloadUrl;
-  } catch (error) {
-    console.warn('Firebase Storage upload failed or not configured, using optimized high-res data URL fallback:', error);
+    const cloudinaryRes = await uploadProductImage(file);
+    return cloudinaryRes.secureUrl || cloudinaryRes.url;
+  } catch (cloudinaryErr) {
+    console.warn('Cloudinary upload error, using optimized data URL fallback:', cloudinaryErr);
     return await createOptimizedDataUrl(file);
   }
 }

@@ -28,6 +28,8 @@ import {
   ExternalLink,
   ChevronDown,
   Check,
+  UploadCloud,
+  Cloud,
 } from 'lucide-react';
 import {
   Product,
@@ -46,7 +48,12 @@ import {
   computeStockStatus,
   generateSku,
 } from '../utils/format';
-import { uploadImageToStorage, validateImageFile } from '../services/storageService';
+import {
+  uploadProductImage,
+  uploadMultipleProductImages,
+  validateImageFile,
+  deleteCloudinaryAsset,
+} from '../services/cloudinaryService';
 import { isSlugTaken } from '../services/productService';
 
 interface ProductFormModalProps {
@@ -155,13 +162,21 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [salePrice, setSalePrice] = useState<number | ''>('');
   const [costPrice, setCostPrice] = useState<number | ''>('');
 
-  // Media
+  // Media (Cloudinary Hosted)
   const [mainImage, setMainImage] = useState('');
+  const [mainImagePublicId, setMainImagePublicId] = useState<string>('');
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [galleryPublicIds, setGalleryPublicIds] = useState<string[]>([]);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [previewZoomImage, setPreviewZoomImage] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
+  const [isDraggingMain, setIsDraggingMain] = useState(false);
+  const [isDraggingGallery, setIsDraggingGallery] = useState(false);
+  const mainFileInputRef = useRef<HTMLInputElement>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Inventory & Variants
+  // Inventory (Individual Product Mode)
   const [trackInventory, setTrackInventory] = useState(true);
   const [baseStock, setBaseStock] = useState<number>(20);
   const [lowStockThreshold, setLowStockThreshold] = useState<number>(5);
@@ -246,16 +261,17 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setCostPrice(productToEdit.costPrice ?? '');
 
       setMainImage(productToEdit.mainImage || '');
+      setMainImagePublicId(productToEdit.mainImagePublicId || '');
       const otherImgs = (productToEdit.images || []).filter((img) => img !== productToEdit.mainImage);
       setGalleryImages(otherImgs);
+      setGalleryPublicIds(productToEdit.imagePublicIds || []);
 
       setTrackInventory(productToEdit.trackInventory !== false);
       setBaseStock(productToEdit.totalStock ?? 20);
       setLowStockThreshold(productToEdit.lowStockThreshold ?? 5);
       setAllowBackorders(Boolean(productToEdit.allowBackorders));
-      const hasVars = Boolean(productToEdit.hasVariants || (productToEdit.variations && productToEdit.variations.length > 0));
-      setHasVariants(hasVars);
-      setVariations(productToEdit.variations || []);
+      setHasVariants(false);
+      setVariations([]);
 
       // Skincare Specs
       const specs = productToEdit.specifications || {};
@@ -314,10 +330,14 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     setCostPrice(950);
 
     setMainImage('https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=1000&q=80');
+    setMainImagePublicId('');
     setGalleryImages([
       'https://images.unsplash.com/photo-1608248597359-0a6245e3ea1e?auto=format&fit=crop&w=1000&q=80',
       'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=1000&q=80',
     ]);
+    setGalleryPublicIds(['', '']);
+    setUploadProgress(0);
+    setUploadStatusText('');
 
     setTrackInventory(true);
     setBaseStock(25);
@@ -385,13 +405,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     setIsDirty(true);
   };
 
-  // Total stock calculation
+  // Total stock calculation (Single Product Mode)
   const calculatedTotalStock = useMemo(() => {
-    if (hasVariants && variations.length > 0) {
-      return variations.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
-    }
     return Number(baseStock) || 0;
-  }, [hasVariants, variations, baseStock]);
+  }, [baseStock]);
 
   const currentStockStatus: StockStatus = useMemo(() => {
     return computeStockStatus(calculatedTotalStock, lowStockThreshold, allowBackorders);
@@ -416,52 +433,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   // Is category sunscreen?
   const isSunscreenCategory = category.toLowerCase().includes('sunscreen') || category.toLowerCase().includes('sunscream');
 
-  // Variations handlers
-  const handleAddVariant = () => {
-    const newVariant: ProductVariation = {
-      id: `var_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: `Option ${variations.length + 1}`,
-      color: 'Dewy Glow',
-      colorCode: '#FF1493',
-      images: [mainImage || 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=1000&q=80'],
-      sku: generateSku(name || 'PROD', category, `V${variations.length + 1}`),
-      stock: 15,
-      priceOverride: undefined,
-      active: true,
-    };
-    setVariations([...variations, newVariant]);
-    setIsDirty(true);
-  };
-
-  const handleUpdateVariant = (index: number, field: keyof ProductVariation, value: any) => {
-    const updated = [...variations];
-    updated[index] = { ...updated[index], [field]: value };
-    setVariations(updated);
-    setIsDirty(true);
-  };
-
-  const handleRemoveVariant = (index: number) => {
-    setVariations(variations.filter((_, i) => i !== index));
-    setIsDirty(true);
-  };
-
-  const handleDuplicateVariant = (index: number) => {
-    const source = variations[index];
-    const clone: ProductVariation = {
-      ...source,
-      id: `var_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: `${source.name} (Copy)`,
-      sku: generateSku(name || 'PROD', category, `CPY`),
-    };
-    setVariations([...variations, clone]);
-    setIsDirty(true);
-  };
-
-  // Image Upload Handlers
-  const handleMainImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Cloudinary Image Upload Handlers
+  const handleMainFileUpload = async (file: File) => {
     const validation = validateImageFile(file);
     if (!validation.valid) {
       setErrorMessage(validation.error || 'Invalid image file.');
@@ -469,41 +442,78 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     }
 
     setUploadingImage(true);
+    setUploadProgress(0);
+    setUploadStatusText(`Uploading ${file.name} to Cloudinary...`);
     setErrorMessage(null);
+
     try {
-      const url = await uploadImageToStorage(file, 'products/main');
-      setMainImage(url);
+      const result = await uploadProductImage(file, (percent) => {
+        setUploadProgress(percent);
+        setUploadStatusText(`Uploading ${file.name}... ${percent}%`);
+      });
+
+      setMainImage(result.secureUrl || result.url);
+      setMainImagePublicId(result.publicId);
+      setUploadStatusText('Main image uploaded successfully!');
       setIsDirty(true);
+      setTimeout(() => {
+        setUploadStatusText('');
+        setUploadProgress(0);
+      }, 2500);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to upload main image.');
+      setErrorMessage(err.message || 'Failed to upload main image to Cloudinary.');
+      setUploadStatusText('');
+      setUploadProgress(0);
     } finally {
       setUploadingImage(false);
+      if (mainFileInputRef.current) mainFileInputRef.current.value = '';
     }
   };
 
-  const handleGalleryImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const handleGalleryFilesUpload = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    for (const f of fileArray) {
+      const val = validateImageFile(f);
+      if (!val.valid) {
+        setErrorMessage(`${f.name}: ${val.error}`);
+        return;
+      }
+    }
 
     setUploadingImage(true);
+    setUploadProgress(0);
+    setUploadStatusText(`Uploading ${fileArray.length} gallery image(s) to Cloudinary...`);
     setErrorMessage(null);
+
     try {
-      const uploadedUrls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const validation = validateImageFile(file);
-        if (!validation.valid) {
-          throw new Error(`${file.name}: ${validation.error}`);
+      const results = await uploadMultipleProductImages(
+        fileArray,
+        (overallPercent, currentIdx, totalFiles) => {
+          setUploadProgress(overallPercent);
+          setUploadStatusText(`Uploading image ${currentIdx} of ${totalFiles} (${overallPercent}%)...`);
         }
-        const url = await uploadImageToStorage(file, 'products/gallery');
-        uploadedUrls.push(url);
-      }
-      setGalleryImages([...galleryImages, ...uploadedUrls]);
+      );
+
+      const newUrls = results.map((r) => r.secureUrl || r.url);
+      const newPids = results.map((r) => r.publicId);
+
+      setGalleryImages((prev) => [...prev, ...newUrls]);
+      setGalleryPublicIds((prev) => [...prev, ...newPids]);
+      setUploadStatusText(`Uploaded ${results.length} image(s) successfully!`);
       setIsDirty(true);
+      setTimeout(() => {
+        setUploadStatusText('');
+        setUploadProgress(0);
+      }, 2500);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed uploading gallery images.');
+      setErrorMessage(err.message || 'Failed uploading gallery images to Cloudinary.');
+      setUploadStatusText('');
+      setUploadProgress(0);
     } finally {
       setUploadingImage(false);
+      if (galleryFileInputRef.current) galleryFileInputRef.current.value = '';
     }
   };
 
@@ -511,8 +521,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     const trimmed = newImageUrl.trim();
     if (!trimmed) return;
     try {
-      new URL(trimmed); // validate format
+      new URL(trimmed);
       setGalleryImages([...galleryImages, trimmed]);
+      setGalleryPublicIds([...galleryPublicIds, '']);
       setNewImageUrl('');
       setIsDirty(true);
     } catch {
@@ -521,28 +532,57 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   const handleSetAsMainImage = (index: number) => {
-    const selected = galleryImages[index];
-    const remaining = galleryImages.filter((_, i) => i !== index);
+    const selectedUrl = galleryImages[index];
+    const selectedPid = galleryPublicIds[index] || '';
+
+    const remainingUrls = galleryImages.filter((_, i) => i !== index);
+    const remainingPids = galleryPublicIds.filter((_, i) => i !== index);
+
     if (mainImage) {
-      remaining.unshift(mainImage);
+      remainingUrls.unshift(mainImage);
+      remainingPids.unshift(mainImagePublicId || '');
     }
-    setMainImage(selected);
-    setGalleryImages(remaining);
+
+    setMainImage(selectedUrl);
+    setMainImagePublicId(selectedPid);
+    setGalleryImages(remainingUrls);
+    setGalleryPublicIds(remainingPids);
     setIsDirty(true);
   };
 
   const handleMoveGalleryImage = (fromIndex: number, direction: 'left' | 'right') => {
     const toIndex = direction === 'left' ? fromIndex - 1 : fromIndex + 1;
     if (toIndex < 0 || toIndex >= galleryImages.length) return;
-    const reordered = [...galleryImages];
-    const [moved] = reordered.splice(fromIndex, 1);
-    reordered.splice(toIndex, 0, moved);
-    setGalleryImages(reordered);
+
+    const reorderedUrls = [...galleryImages];
+    const [movedUrl] = reorderedUrls.splice(fromIndex, 1);
+    reorderedUrls.splice(toIndex, 0, movedUrl);
+
+    const reorderedPids = [...galleryPublicIds];
+    const [movedPid] = reorderedPids.splice(fromIndex, 1);
+    reorderedPids.splice(toIndex, 0, movedPid);
+
+    setGalleryImages(reorderedUrls);
+    setGalleryPublicIds(reorderedPids);
     setIsDirty(true);
   };
 
   const handleRemoveGalleryImage = (index: number) => {
+    const pid = galleryPublicIds[index];
+    if (pid) {
+      deleteCloudinaryAsset(pid).catch((e) => console.warn('Could not remove Cloudinary asset:', e));
+    }
     setGalleryImages(galleryImages.filter((_, i) => i !== index));
+    setGalleryPublicIds(galleryPublicIds.filter((_, i) => i !== index));
+    setIsDirty(true);
+  };
+
+  const handleRemoveMainImage = () => {
+    if (mainImagePublicId) {
+      deleteCloudinaryAsset(mainImagePublicId).catch((e) => console.warn('Could not remove Cloudinary asset:', e));
+    }
+    setMainImage('');
+    setMainImagePublicId('');
     setIsDirty(true);
   };
 
@@ -643,6 +683,18 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       }
 
       const allImages = [mainImage, ...galleryImages].filter(Boolean);
+      const allPublicIds = [mainImagePublicId, ...galleryPublicIds].filter((id): id is string => Boolean(id));
+
+      const defaultVariation: ProductVariation = {
+        id: 'default',
+        name: 'Standard',
+        color: 'Default',
+        colorCode: '#FF1493',
+        images: [mainImage || 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=1000&q=80'],
+        sku: sku.trim() || generateSku(name, category),
+        stock: calculatedTotalStock,
+        active: true,
+      };
 
       const finalProductPayload: Omit<Product, 'id'> = {
         name: name.trim(),
@@ -661,14 +713,16 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
         mainImage,
         images: allImages,
+        mainImagePublicId: mainImagePublicId || undefined,
+        imagePublicIds: allPublicIds.length > 0 ? allPublicIds : undefined,
 
         trackInventory,
         totalStock: calculatedTotalStock,
         lowStockThreshold,
         allowBackorders,
-        hasVariants,
+        hasVariants: false,
         stockStatus: currentStockStatus,
-        variations: hasVariants ? variations : [],
+        variations: [defaultVariation],
 
         specifications: {
           skinType: skinTypes.join(', '),
@@ -1292,266 +1346,61 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   </div>
                 </div>
 
-                {!hasVariants && (
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                      Available Stock Quantity (Units)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={baseStock}
-                      onChange={(e) => {
-                        setBaseStock(Number(e.target.value));
-                        setIsDirty(true);
-                      }}
-                      className="w-full sm:w-1/3 px-4 py-2.5 text-sm font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#FF1493]"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Available Stock Quantity (Units) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={baseStock}
+                    onChange={(e) => {
+                      setBaseStock(Number(e.target.value));
+                      setIsDirty(true);
+                    }}
+                    className="w-full sm:w-1/3 px-4 py-2.5 text-sm font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#FF1493]"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Direct warehouse stock for this individual product.
+                  </p>
+                </div>
               </div>
 
-              {/* PRODUCT VARIANTS MANAGER */}
-              <div className="p-6 bg-white rounded-2xl border border-slate-200 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-5 h-5 text-[#FF1493]" />
-                      <h3 className="font-serif text-base font-bold text-slate-900">
-                        Product Variants (Sizes, Shades, Scents &amp; Pack Types)
-                      </h3>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      When enabled, storefront stock and price dynamically adapt to customer selection.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={hasVariants}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setHasVariants(checked);
-                          setIsDirty(true);
-                          if (checked && variations.length === 0) {
-                            handleAddVariant();
-                          }
-                        }}
-                        className="sr-only peer"
-                      />
-                      <div className="w-10 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF1493]"></div>
-                      <span className="ml-2 text-xs font-bold text-slate-700">
-                        {hasVariants ? 'Variants Enabled' : 'Single Product'}
-                      </span>
-                    </label>
-
-                    {hasVariants && (
-                      <button
-                        type="button"
-                        onClick={handleAddVariant}
-                        className="px-3.5 py-1.5 bg-[#FFF0F6] text-[#FF1493] border border-[#FFC1E3] hover:bg-[#FF1493] hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Add Variant</span>
-                      </button>
-                    )}
-                  </div>
+              {/* INDIVIDUAL PRODUCT NOTICE */}
+              <div className="p-4 bg-pink-50/60 rounded-2xl border border-pink-200 flex items-start gap-3">
+                <Package className="w-5 h-5 text-[#FF1493] shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-700">
+                  <span className="font-bold text-slate-900 block mb-0.5">Individual Product Architecture</span>
+                  Each product variation (size, volume, or shade) is created as an independent product with its own dedicated SKU, price, stock, and photos.
                 </div>
-
-                {hasVariants && (
-                  <div className="space-y-4 pt-2">
-                    {variations.length === 0 ? (
-                      <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                        <Layers className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                        <p className="text-xs font-semibold text-slate-700">No variants added yet.</p>
-                        <button
-                          type="button"
-                          onClick={handleAddVariant}
-                          className="mt-3 px-4 py-2 bg-[#FF1493] text-white rounded-xl text-xs font-bold uppercase shadow-sm"
-                        >
-                          + Add First Variant
-                        </button>
-                      </div>
-                    ) : (
-                      variations.map((v, idx) => (
-                        <div
-                          key={v.id || idx}
-                          className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4 hover:border-pink-300 transition-colors"
-                        >
-                          <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                            <div className="flex items-center gap-2.5">
-                              <span
-                                className="w-4 h-4 rounded-full border border-black/20 shrink-0 shadow-2xs"
-                                style={{ backgroundColor: v.colorCode || '#FF1493' }}
-                              />
-                              <span className="font-bold text-xs text-slate-900">
-                                Variant #{idx + 1}: {v.name}
-                              </span>
-                              <span
-                                className={`text-[10px] px-2 py-0.2 rounded-full font-bold uppercase ${
-                                  v.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                                }`}
-                              >
-                                {v.active ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleDuplicateVariant(idx)}
-                                className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-white rounded-lg transition-colors"
-                                title="Duplicate variant"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveVariant(idx)}
-                                className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Remove variant"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                            {/* Variant Name */}
-                            <div>
-                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                                Option / Size Name *
-                              </label>
-                              <input
-                                type="text"
-                                value={v.name}
-                                onChange={(e) => handleUpdateVariant(idx, 'name', e.target.value)}
-                                placeholder="e.g. 50ml Dropper"
-                                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#FF1493]"
-                              />
-                            </div>
-
-                            {/* Color/Shade Label */}
-                            <div>
-                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                                Color / Shade / Scent
-                              </label>
-                              <input
-                                type="text"
-                                value={v.color || ''}
-                                onChange={(e) => handleUpdateVariant(idx, 'color', e.target.value)}
-                                placeholder="e.g. Dewy Glow"
-                                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#FF1493]"
-                              />
-                            </div>
-
-                            {/* Color Swatch */}
-                            <div>
-                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                                Swatch Color
-                              </label>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="color"
-                                  value={v.colorCode || '#FF1493'}
-                                  onChange={(e) => handleUpdateVariant(idx, 'colorCode', e.target.value)}
-                                  className="w-8 h-8 rounded border border-slate-300 cursor-pointer p-0.5 shrink-0"
-                                />
-                                <input
-                                  type="text"
-                                  value={v.colorCode || '#FF1493'}
-                                  onChange={(e) => handleUpdateVariant(idx, 'colorCode', e.target.value)}
-                                  className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg"
-                                />
-                              </div>
-                            </div>
-
-                            {/* SKU */}
-                            <div>
-                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                                Variant SKU
-                              </label>
-                              <input
-                                type="text"
-                                value={v.sku || ''}
-                                onChange={(e) => handleUpdateVariant(idx, 'sku', e.target.value)}
-                                placeholder="ANFA-CEN-50M"
-                                className="w-full px-3 py-2 text-xs font-mono bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#FF1493]"
-                              />
-                            </div>
-
-                            {/* Stock */}
-                            <div>
-                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                                Stock Quantity *
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={v.stock}
-                                onChange={(e) => handleUpdateVariant(idx, 'stock', Number(e.target.value))}
-                                className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#FF1493]"
-                              />
-                            </div>
-
-                            {/* Price Override */}
-                            <div>
-                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                                Price Override (৳) <span className="font-normal text-slate-400">(Optional)</span>
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={v.priceOverride ?? ''}
-                                onChange={(e) =>
-                                  handleUpdateVariant(
-                                    idx,
-                                    'priceOverride',
-                                    e.target.value === '' ? undefined : Number(e.target.value)
-                                  )
-                                }
-                                placeholder={`Base: ${formatPrice(numericBasePrice)}`}
-                                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#FF1493]"
-                              />
-                            </div>
-
-                            {/* Image URL */}
-                            <div className="lg:col-span-2">
-                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                                Variant Image URL (Displayed when chosen)
-                              </label>
-                              <div className="flex gap-2">
-                                <input
-                                  type="url"
-                                  value={v.images?.[0] || ''}
-                                  onChange={(e) => handleUpdateVariant(idx, 'images', [e.target.value])}
-                                  placeholder="https://..."
-                                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#FF1493]"
-                                />
-                                {v.images?.[0] && (
-                                  <img
-                                    src={v.images[0]}
-                                    alt="Variant preview"
-                                    className="w-8 h-8 rounded object-cover border border-slate-200 shrink-0"
-                                  />
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           )}
 
-          {/* TAB 3: IMAGES & GALLERY */}
+          {/* TAB 3: IMAGES & GALLERY (CLOUDINARY POWERED) */}
           {activeTab === 'images' && (
             <div className="space-y-6 animate-in fade-in duration-150">
+              {/* Live Upload Progress Indicator */}
+              {(uploadingImage || uploadProgress > 0) && (
+                <div className="p-4 bg-gradient-to-r from-pink-50 via-white to-rose-50 border border-pink-200 rounded-2xl shadow-xs space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-[#FF1493] flex items-center gap-2">
+                      <Cloud className="w-4 h-4 animate-bounce text-[#FF1493]" />
+                      <span>{uploadStatusText || 'Uploading to Cloudinary (anfa-bd/products)...'}</span>
+                    </span>
+                    <span className="font-mono font-bold text-slate-800 bg-white px-2.5 py-0.5 rounded-full border border-pink-200 text-[11px] shadow-2xs">
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                  <div className="w-full h-2.5 bg-pink-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-[#FF1493] to-rose-500 rounded-full transition-all duration-200"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Main Product Image Section */}
               <div className="p-6 bg-slate-50/70 rounded-2xl border border-slate-200 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -1561,12 +1410,13 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       <span>Main Product Image <span className="text-[#FF1493]">*</span></span>
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Primary high-resolution photo displayed across product listings, cards, and cart.
+                      Primary storefront showcase photo. Securely hosted and delivered via Cloudinary.
                     </p>
                   </div>
-                  {uploadingImage && (
-                    <span className="text-xs text-[#FF1493] font-semibold animate-pulse">
-                      Processing &amp; Optimizing...
+                  {mainImagePublicId && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold">
+                      <Shield className="w-3 h-3" />
+                      <span>Cloudinary Verified</span>
                     </span>
                   )}
                 </div>
@@ -1581,64 +1431,97 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           alt="Main Product Preview"
                           className="w-full h-full object-cover object-center"
                         />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
                           <button
                             type="button"
                             onClick={() => setPreviewZoomImage(mainImage)}
-                            className="p-2 bg-white text-slate-900 rounded-full hover:scale-110 transition-transform shadow-md"
+                            className="px-3 py-1.5 bg-white text-slate-900 rounded-xl hover:scale-105 transition-transform shadow-md text-xs font-bold flex items-center gap-1.5"
                             title="Zoom full image"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleRemoveMainImage}
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-md text-xs font-bold flex items-center gap-1.5"
+                            title="Remove main image"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remove</span>
                           </button>
                         </div>
                       </>
                     ) : (
                       <div className="text-center p-4 text-slate-400">
                         <ImageIcon className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                        <span className="text-xs font-semibold block">No main image set</span>
-                        <span className="text-[10px]">Upload or enter URL</span>
+                        <span className="text-xs font-semibold block text-slate-600">No main image</span>
+                        <span className="text-[10px] text-slate-400">Drop file on right or browse</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Input Controls */}
+                  {/* Upload Drop Area & Controls */}
                   <div className="md:col-span-8 space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                        Image URL (Direct link)
+                    {/* Drag and Drop Zone */}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDraggingMain(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        setIsDraggingMain(false);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingMain(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handleMainFileUpload(file);
+                      }}
+                      onClick={() => mainFileInputRef.current?.click()}
+                      className={`p-6 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                        isDraggingMain
+                          ? 'border-[#FF1493] bg-pink-50/80 scale-[1.01]'
+                          : 'border-slate-300 hover:border-[#FF1493] bg-white hover:bg-pink-50/20'
+                      }`}
+                    >
+                      <div className="w-12 h-12 rounded-full bg-[#FFF0F6] text-[#FF1493] flex items-center justify-center mb-2 shadow-2xs">
+                        <UploadCloud className="w-6 h-6" />
+                      </div>
+                      <p className="text-xs font-bold text-slate-800">
+                        Drag &amp; drop main image here, or <span className="text-[#FF1493] underline">click to browse</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        JPG, JPEG, PNG, WebP, AVIF, GIF &bull; Max 5 MB per image
+                      </p>
+                      <input
+                        ref={mainFileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleMainFileUpload(file);
+                        }}
+                      />
+                    </div>
+
+                    {/* Direct Image URL input fallback */}
+                    <div className="pt-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                        Or enter direct image URL
                       </label>
                       <input
                         type="url"
-                        placeholder="https://images.unsplash.com/... or cloudinary link"
+                        placeholder="https://res.cloudinary.com/... or https://images.unsplash.com/..."
                         value={mainImage}
                         onChange={(e) => {
                           setMainImage(e.target.value);
                           setIsDirty(true);
                         }}
-                        className="w-full px-4 py-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#FF1493]"
+                        className="w-full px-4 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#FF1493]"
                       />
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="h-px bg-slate-200 flex-1" />
-                      <span className="text-[11px] text-slate-400 uppercase font-bold">OR UPLOAD FILE</span>
-                      <div className="h-px bg-slate-200 flex-1" />
-                    </div>
-
-                    <div>
-                      <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FFF0F6] text-[#FF1493] border border-[#FFC1E3] hover:bg-[#FF1493] hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-xs">
-                        <Upload className="w-4 h-4" />
-                        <span>Upload From Device (JPEG, PNG, WEBP, AVIF)</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleMainImageFileUpload}
-                        />
-                      </label>
-                      <p className="mt-1.5 text-[11px] text-slate-500">
-                        Max file size: 5MB. Automatically optimized for retina displays.
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -1653,30 +1536,74 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       <span>Additional Gallery Images ({galleryImages.length})</span>
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Reorder, remove, or promote any gallery photo to main product image.
+                      Reorder, promote any gallery image to main, or remove photos.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <label className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white border border-slate-300 hover:border-[#FF1493] text-slate-800 hover:text-[#FF1493] rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-2xs">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Files</span>
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleGalleryImageFileUpload}
-                      />
-                    </label>
+                  <button
+                    type="button"
+                    onClick={() => galleryFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FF1493] hover:bg-[#E00078] text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Gallery Images</span>
+                  </button>
+                  <input
+                    ref={galleryFileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleGalleryFilesUpload(e.target.files);
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Gallery Drag & Drop Dropzone */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingGallery(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setIsDraggingGallery(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingGallery(false);
+                    const files = e.dataTransfer.files;
+                    if (files && files.length > 0) handleGalleryFilesUpload(files);
+                  }}
+                  className={`p-5 border-2 border-dashed rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 transition-all ${
+                    isDraggingGallery
+                      ? 'border-[#FF1493] bg-pink-50/80 scale-[1.01]'
+                      : 'border-slate-300 bg-white hover:border-[#FF1493]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#FFF0F6] text-[#FF1493] flex items-center justify-center shrink-0">
+                      <UploadCloud className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-900">
+                        Drag &amp; drop multiple gallery photos here
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Batch upload texture closeups, product angles, and packaging details (Max 5 MB each)
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Add via URL input */}
+                {/* Add via URL input row */}
                 <div className="flex gap-2">
                   <input
                     type="url"
-                    placeholder="Add additional image by direct URL (https://...)"
+                    placeholder="Or add additional image by direct URL (https://...)"
                     value={newImageUrl}
                     onChange={(e) => setNewImageUrl(e.target.value)}
                     className="flex-1 px-4 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#FF1493]"
@@ -1696,15 +1623,15 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     <ImageIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     <p className="text-xs font-semibold text-slate-600">No additional gallery images added.</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Upload swatch closeups, texture shots, and packaging details.
+                      Drag files above or click Upload Gallery Images to add photos.
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 pt-2">
                     {galleryImages.map((imgUrl, idx) => (
                       <div
                         key={idx}
-                        className="group relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs"
+                        className="group relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs hover:shadow-md transition-shadow"
                       >
                         <img
                           src={imgUrl}
@@ -1721,7 +1648,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleRemoveGalleryImage(idx)}
-                              className="text-red-400 hover:text-red-200 p-1"
+                              className="text-red-400 hover:text-red-200 p-1 rounded hover:bg-white/10 transition-colors"
                               title="Delete image"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1732,7 +1659,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleSetAsMainImage(idx)}
-                              className="w-full py-1 text-[10px] font-bold bg-[#FF1493] hover:bg-[#E00078] rounded text-white tracking-wide"
+                              className="w-full py-1 text-[10px] font-bold bg-[#FF1493] hover:bg-[#E00078] rounded text-white tracking-wide shadow-xs cursor-pointer"
                             >
                               Make Main
                             </button>
@@ -1741,7 +1668,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 type="button"
                                 disabled={idx === 0}
                                 onClick={() => handleMoveGalleryImage(idx, 'left')}
-                                className="flex-1 py-0.5 text-[9px] bg-white/20 hover:bg-white/30 rounded disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                                className="flex-1 py-1 text-[9px] bg-white/20 hover:bg-white/30 rounded disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
                                 title="Move left"
                               >
                                 <ArrowLeft className="w-3 h-3" />
@@ -1758,7 +1685,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 type="button"
                                 disabled={idx === galleryImages.length - 1}
                                 onClick={() => handleMoveGalleryImage(idx, 'right')}
-                                className="flex-1 py-0.5 text-[9px] bg-white/20 hover:bg-white/30 rounded disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                                className="flex-1 py-1 text-[9px] bg-white/20 hover:bg-white/30 rounded disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
                                 title="Move right"
                               >
                                 <ArrowRight className="w-3 h-3" />
@@ -2367,9 +2294,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             {/* Save as Draft */}
             <button
               type="button"
-              disabled={isSubmitting}
+              disabled={isSubmitting || uploadingImage}
               onClick={() => handleSubmit('draft')}
-              className="flex-1 sm:flex-none px-5 py-2.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+              className="flex-1 sm:flex-none px-5 py-2.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>Save as Draft</span>
             </button>
@@ -2377,14 +2304,19 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             {/* Publish Product */}
             <button
               type="button"
-              disabled={isSubmitting}
+              disabled={isSubmitting || uploadingImage}
               onClick={() => handleSubmit('published')}
-              className="flex-1 sm:flex-none px-6 py-2.5 bg-[#FF1493] hover:bg-[#E00078] text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="flex-1 sm:flex-none px-6 py-2.5 bg-[#FF1493] hover:bg-[#E00078] text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>Saving...</span>
+                </>
+              ) : uploadingImage ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Uploading Image...</span>
                 </>
               ) : (
                 <>
