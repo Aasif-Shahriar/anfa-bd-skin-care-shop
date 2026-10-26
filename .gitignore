@@ -9,3 +9,4 @@ coverage/
 *service-account*.json
 firebase-adminsdk*.json
 credentials.json
+anfabd-firebase-adminsdk.json
