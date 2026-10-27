@@ -2,7 +2,7 @@
   "entities": {
     "Product": {
       "title": "Product",
-      "description": "Jewellery product catalog item with variations",
+      "description": "Authentic skincare product catalog item with image assets",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -79,7 +79,7 @@
   "firestore": {
     "/products/{productId}": {
       "schema": "Product",
-      "description": "Jewellery catalog products collection"
+      "description": "Authentic Korean skincare boutique catalog products collection"
     },
     "/orders/{orderId}": {
       "schema": "Order",

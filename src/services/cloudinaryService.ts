@@ -133,7 +133,7 @@ export function uploadProductImage(
             console.error('Non-JSON response from upload server:', xhr.responseText.substring(0, 300));
             reject(
               new Error(
-                'Invalid response received from upload server. Please make sure you are signed in as an administrator (asif.al.azad201m@gmail.com).'
+                'Invalid response received from upload server. Please make sure you are signed in with an authorized administrator account.'
               )
             );
           }

@@ -1,9 +1,9 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import * as path from "path";
 import * as fs from "fs";
-import * as crypto from "crypto";
 import * as dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import rateLimit from "express-rate-limit";
 import {
   initializeApp,
   cert,
@@ -17,24 +17,95 @@ import multer from "multer";
 
 dotenv.config();
 
-// Cloudinary Configuration
+// ============================================================================
+// 1. CLOUDINARY CONFIGURATION & STRICT VALIDATION
+// ============================================================================
+const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+const CLOUD_API_KEY = process.env.CLOUDINARY_API_KEY?.trim();
+const CLOUD_API_SECRET = process.env.CLOUDINARY_API_SECRET?.trim();
 
-const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
-const CLOUD_API_KEY = process.env.CLOUDINARY_API_KEY;
-const CLOUD_API_SECRET = process.env.CLOUDINARY_API_SECRET;
+const isCloudinaryConfigured = Boolean(
+  CLOUD_NAME && CLOUD_API_KEY && CLOUD_API_SECRET,
+);
 
-if (!CLOUD_NAME || !CLOUD_API_KEY || !CLOUD_API_SECRET) {
-  throw new Error("Missing required Cloudinary environment variables.");
+if (!isCloudinaryConfigured) {
+  console.error(
+    "========================================================================\n" +
+      "[STARTUP CONFIGURATION ERROR] Missing required Cloudinary credentials!\n" +
+      "Missing: " +
+      [
+        !CLOUD_NAME && "CLOUDINARY_CLOUD_NAME",
+        !CLOUD_API_KEY && "CLOUDINARY_API_KEY",
+        !CLOUD_API_SECRET && "CLOUDINARY_API_SECRET",
+      ]
+        .filter(Boolean)
+        .join(", ") +
+      "\nPlease set these in your server environment (.env). Cloudinary upload/delete\n" +
+      "endpoints will return HTTP 503 until configured.\n" +
+      "========================================================================",
+  );
+} else {
+  cloudinary.config({
+    cloud_name: CLOUD_NAME,
+    api_key: CLOUD_API_KEY,
+    api_secret: CLOUD_API_SECRET,
+    secure: true,
+  });
 }
 
-cloudinary.config({
-  cloud_name: CLOUD_NAME,
-  api_key: CLOUD_API_KEY,
-  api_secret: CLOUD_API_SECRET,
-  secure: true,
-});
+// Helper to inspect magic bytes for supported image formats
+function isValidImageMagicBytes(buffer: Buffer): boolean {
+  if (!buffer || buffer.length < 12) return false;
 
-// Configure Multer for in-memory file uploads with 5MB ceiling
+  // JPEG / JPG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return true;
+  }
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return true;
+  }
+
+  // GIF: GIF87a or GIF89a (47 49 46 38)
+  if (
+    buffer[0] === 0x47 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x38
+  ) {
+    return true;
+  }
+
+  // WebP: RIFF....WEBP (bytes 0-3 'RIFF' and bytes 8-11 'WEBP')
+  if (
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return true;
+  }
+
+  // AVIF / HEIF: bytes 4-8 'ftyp'
+  if (buffer.toString("ascii", 4, 8) === "ftyp") {
+    const brand = buffer.toString("ascii", 8, 12).toLowerCase();
+    if (["avif", "avis", "mif1", "msf1", "heic"].includes(brand)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Multer memory storage with 5 MB ceiling and strict MIME check
 const imageUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -61,27 +132,35 @@ const imageUpload = multer({
   },
 });
 
-const app = express();
-const PORT = parseInt(process.env.PORT || "3000", 10);
+// ============================================================================
+// 2. FIREBASE ADMIN SDK INITIALIZATION
+// ============================================================================
+// Clean up invalid GOOGLE_APPLICATION_CREDENTIALS pointing to non-existent files
+if (
+  process.env.GOOGLE_APPLICATION_CREDENTIALS &&
+  !fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)
+) {
+  console.warn(
+    `[AUTH NOTICE] GOOGLE_APPLICATION_CREDENTIALS points to non-existent file: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}. Ignoring invalid path.`,
+  );
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+}
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-// Project ID from config
 let projectId = "gen-lang-client-0282419252";
+let firestoreDatabaseId: string | undefined = "ai-studio-06f97065-14c1-4a3a-9fd1-24d4abb659a8";
 try {
   const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
   if (fs.existsSync(configPath)) {
     const raw = fs.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.projectId) projectId = parsed.projectId;
+    if (parsed.firestoreDatabaseId) firestoreDatabaseId = parsed.firestoreDatabaseId;
   }
-} catch (e) {
-  console.warn("Could not read firebase-applet-config.json:", e);
+} catch {
+  // Use default project ID and database ID if file is not readable
 }
 
-// Initialize Firebase Admin SDK
-function getAdminAuth() {
+function getAdminApp() {
   if (getApps().length === 0) {
     if (
       process.env.GOOGLE_APPLICATION_CREDENTIALS &&
@@ -90,7 +169,7 @@ function getAdminAuth() {
       const serviceAccount = JSON.parse(
         fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf-8"),
       );
-      initializeApp({
+      return initializeApp({
         credential: cert(serviceAccount),
         projectId: serviceAccount.project_id || projectId,
       });
@@ -98,7 +177,7 @@ function getAdminAuth() {
       const serviceAccount = JSON.parse(
         process.env.FIREBASE_SERVICE_ACCOUNT_KEY,
       );
-      initializeApp({
+      return initializeApp({
         credential: cert(serviceAccount),
         projectId: serviceAccount.project_id || projectId,
       });
@@ -112,106 +191,197 @@ function getAdminAuth() {
       if (saFile) {
         const fullPath = path.resolve(process.cwd(), saFile);
         const serviceAccount = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
-        initializeApp({
+        return initializeApp({
           credential: cert(serviceAccount),
           projectId: serviceAccount.project_id || projectId,
         });
       } else {
-        initializeApp({
+        return initializeApp({
           credential: applicationDefault(),
           projectId,
         });
       }
     }
   }
-  return getAuth();
+  return getApps()[0];
+}
+
+function getAdminAuth() {
+  const app = getAdminApp();
+  return getAuth(app);
 }
 
 function getAdminFirestore() {
-  getAdminAuth();
-  return getFirestore();
+  const app = getAdminApp();
+  if (firestoreDatabaseId) {
+    return getFirestore(app, firestoreDatabaseId);
+  }
+  return getFirestore(app);
 }
 
-// Master Admin Bootstrap Secret
-// Can be set in .env via ADMIN_BOOTSTRAP_SECRET.
-// If not specified, generates a secure random token on server boot and logs it only to stdout.
-let bootstrapSecret = process.env.ADMIN_BOOTSTRAP_SECRET;
-if (!bootstrapSecret) {
-  bootstrapSecret = crypto.randomBytes(24).toString("hex");
-  console.log(
-    "------------------------------------------------------------------------",
-  );
-  console.log(
-    "[SECURITY NOTICE] No ADMIN_BOOTSTRAP_SECRET configured in .env.",
-  );
-  console.log(`[SECURITY NOTICE] Generated Ephemeral Master Bootstrap Secret:`);
-  console.log(`>>> ${bootstrapSecret} <<<`);
-  console.log(
-    'Provide this secret via header "x-admin-bootstrap-secret" to designate the first admin.',
-  );
-  console.log(
-    "------------------------------------------------------------------------",
-  );
+// ============================================================================
+// 3. CENTRALIZED ADMIN AUTHORIZATION VERIFICATION
+// ============================================================================
+/**
+ * Strictly verifies the Firebase ID token using the Firebase Admin SDK.
+ * Authorization requires:
+ * 1. Cryptographically valid, non-expired ID token
+ * 2. Verified custom claim: decoded.admin === true
+ *
+ * NOTE: Returns 401 Unauthorized for both missing auth and unprivileged tokens
+ * to prevent upstream proxy 403 error interception (which converts 403 to HTML).
+ * Unverified JWT payload decodes and hardcoded email authorizations are strictly disallowed.
+ */
+async function verifyAdminCaller(
+  req: Request,
+): Promise<{ uid: string; email?: string } | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+  const idToken = authHeader.split("Bearer ")[1]?.trim();
+  if (!idToken) return null;
+
+  try {
+    const auth = getAdminAuth();
+    // Cryptographically verify token signature with Google certificates
+    const decoded = await auth.verifyIdToken(idToken, true);
+
+    // Require custom claim: admin === true
+    if (decoded.admin === true) {
+      return { uid: decoded.uid, email: decoded.email };
+    }
+  } catch (err: any) {
+    // ID token signature invalid, expired, revoked, or malformed
+    return null;
+  }
+
+  return null;
 }
+
+// HTML Escaping helper to prevent injection in generated email templates
+function escapeHtml(str: any): string {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// ============================================================================
+// 4. EXPRESS APP & RATE LIMITING
+// ============================================================================
+const app = express();
+const PORT = parseInt(process.env.PORT || "3000", 10);
+
+// Trust first proxy hop so rate-limit correctly tracks client IPs behind reverse proxies
+app.set("trust proxy", 1);
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Standard rate limiter for general API endpoints: 120 req / 15 min
+const standardLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many requests. Please try again later.",
+  },
+});
+
+// Strict rate limiter for uploads: 30 uploads / 15 min per IP
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "TooManyRequests",
+    message: "Image upload limit reached. Please wait before uploading more assets.",
+  },
+});
+
+// Strict rate limiter for invoice email requests: 15 emails / 15 min per IP
+const invoiceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many invoice dispatch requests. Please try again later.",
+  },
+});
+
+// Admin management rate limiter: 30 req / 15 min per IP
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many administrative requests. Please try again later.",
+  },
+});
 
 /**
- * POST /api/admin/bootstrap-first-admin
- * Secure bootstrap mechanism allowing the project owner to designate the first admin.
- * Requires the master secret header (never exposed to client browser code).
+ * GET /api/health
+ * Backend health check endpoint
  */
-app.post(
-  "/api/admin/bootstrap-first-admin",
-  async (req: Request, res: Response): Promise<void> => {
-    const secretHeader = req.headers["x-admin-bootstrap-secret"];
+app.get("/api/health", (_req: Request, res: Response): void => {
+  res.status(200).json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    service: "ANFA BD API",
+    cloudinaryConfigured: isCloudinaryConfigured,
+  });
+});
 
-    if (!secretHeader || secretHeader !== bootstrapSecret) {
+// ============================================================================
+// 5. ADMIN AUTHENTICATION & CLAIM MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * GET /api/admin/verify-token
+ * Validates the caller's ID token and reports their admin status.
+ */
+app.get(
+  "/api/admin/verify-token",
+  adminLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       res.status(401).json({
         error: "Unauthorized",
-        message:
-          "Invalid or missing x-admin-bootstrap-secret header. Access denied.",
+        message: "Bearer ID token required in Authorization header.",
       });
       return;
     }
 
-    const { targetEmail, targetUid } = req.body;
-    if (!targetEmail && !targetUid) {
-      res.status(400).json({
-        error: "BadRequest",
-        message: "Please provide targetEmail or targetUid in request body.",
-      });
+    const idToken = authHeader.split("Bearer ")[1]?.trim();
+    if (!idToken) {
+      res.status(401).json({ error: "Unauthorized", message: "Token missing." });
       return;
     }
 
     try {
       const auth = getAdminAuth();
-      let userRecord;
-      if (targetEmail) {
-        userRecord = await auth.getUserByEmail(targetEmail);
-      } else {
-        userRecord = await auth.getUser(targetUid);
-      }
-
-      const currentClaims = userRecord.customClaims || {};
-      const updatedClaims = { ...currentClaims, admin: true };
-
-      await auth.setCustomUserClaims(userRecord.uid, updatedClaims);
-
+      const decoded = await auth.verifyIdToken(idToken);
       res.status(200).json({
-        success: true,
-        message: `Admin custom claim { admin: true } successfully assigned to ${userRecord.email}`,
-        user: {
-          uid: userRecord.uid,
-          email: userRecord.email,
-          customClaims: updatedClaims,
-        },
+        uid: decoded.uid,
+        email: decoded.email,
+        isAdmin: decoded.admin === true,
       });
     } catch (err: any) {
-      console.error("Bootstrap admin claim assignment failed:", err);
-      res.status(500).json({
-        error: "AdminAssignmentFailed",
-        message:
-          err.message ||
-          "Failed to assign custom claim using Firebase Admin SDK.",
+      res.status(401).json({
+        error: "InvalidToken",
+        message: "ID token is invalid or expired.",
       });
     }
   },
@@ -219,45 +389,40 @@ app.post(
 
 /**
  * POST /api/admin/set-claim
- * Allows an existing verified admin (verified via ID token custom claim) to grant/revoke admin privileges.
+ * Allows a verified administrator to assign or revoke admin custom claims for other users.
  */
 app.post(
   "/api/admin/set-claim",
+  adminLimiter,
   async (req: Request, res: Response): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res
-        .status(401)
-        .json({ error: "Unauthorized", message: "Bearer token required." });
+    const admin = await verifyAdminCaller(req);
+    if (!admin) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message:
+          "Administrator authorization required. Caller must possess verified { admin: true } claim.",
+      });
       return;
     }
 
-    const idToken = authHeader.split("Bearer ")[1];
+    const { targetUid, targetEmail, makeAdmin } = req.body;
+    if (!targetUid && !targetEmail) {
+      res.status(400).json({
+        error: "BadRequest",
+        message: "targetUid or targetEmail required in request body.",
+      });
+      return;
+    }
+
     try {
       const auth = getAdminAuth();
-      const decodedCaller = await auth.verifyIdToken(idToken);
-
-      // CRITICAL: Caller MUST already possess admin custom claim!
-      if (decodedCaller.admin !== true) {
-        res.status(403).json({
-          error: "Forbidden",
-          message:
-            "Caller does not possess { admin: true } custom claim. Privilege escalation denied.",
-        });
-        return;
-      }
-
-      const { targetUid, targetEmail, makeAdmin } = req.body;
       let targetRecord;
-      if (targetEmail) {
-        targetRecord = await auth.getUserByEmail(targetEmail);
-      } else if (targetUid) {
-        targetRecord = await auth.getUser(targetUid);
+      if (targetEmail && typeof targetEmail === "string") {
+        targetRecord = await auth.getUserByEmail(targetEmail.trim().toLowerCase());
+      } else if (targetUid && typeof targetUid === "string") {
+        targetRecord = await auth.getUser(targetUid.trim());
       } else {
-        res.status(400).json({
-          error: "BadRequest",
-          message: "targetUid or targetEmail required.",
-        });
+        res.status(400).json({ error: "BadRequest", message: "Invalid target identifier." });
         return;
       }
 
@@ -268,121 +433,44 @@ app.post(
 
       res.status(200).json({
         success: true,
-        message: `User ${targetRecord.email} admin claim set to ${Boolean(makeAdmin)}`,
+        message: `Admin claim set to ${Boolean(makeAdmin)} for ${targetRecord.email}`,
         targetUser: {
           uid: targetRecord.uid,
           email: targetRecord.email,
-          customClaims: updatedClaims,
+          admin: Boolean(makeAdmin),
         },
       });
     } catch (err: any) {
-      console.error("set-claim error:", err);
-      res.status(500).json({ error: "ServerError", message: err.message });
-    }
-  },
-);
-
-/**
- * GET /api/admin/verify-token
- * Returns the decoded token claims for debugging and verification.
- */
-app.get(
-  "/api/admin/verify-token",
-  async (req: Request, res: Response): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res
-        .status(401)
-        .json({ error: "Unauthorized", message: "Bearer token required." });
-      return;
-    }
-
-    const idToken = authHeader.split("Bearer ")[1];
-    try {
-      const auth = getAdminAuth();
-      const decoded = await auth.verifyIdToken(idToken);
-      res.status(200).json({
-        uid: decoded.uid,
-        email: decoded.email,
-        isAdmin: decoded.admin === true,
-        claims: decoded,
+      res.status(500).json({
+        error: "ClaimAssignmentFailed",
+        message: err.message || "Failed to assign custom claim.",
       });
-    } catch (err: any) {
-      res.status(401).json({ error: "InvalidToken", message: err.message });
     }
   },
 );
 
-// Designated administrative emails
-const ADMIN_EMAILS = ["asif.al.azad201m@gmail.com", "faria201237@gmail.com"];
-
-/**
- * Validates that the request comes from an authenticated administrator via Firebase ID token.
- */
-async function verifyAdminCaller(
-  req: Request,
-): Promise<{ uid: string; email?: string } | null> {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    console.warn("[AUTH] Missing or invalid Authorization header");
-    return null;
-  }
-  const idToken = authHeader.split("Bearer ")[1]?.trim();
-  if (!idToken) return null;
-
-  try {
-    const auth = getAdminAuth();
-    const decoded = await auth.verifyIdToken(idToken);
-    const email = decoded.email?.toLowerCase();
-    const isDesignatedAdmin = Boolean(email && ADMIN_EMAILS.includes(email));
-    const isAdmin = decoded.admin === true || isDesignatedAdmin;
-    if (isAdmin) {
-      return { uid: decoded.uid, email: decoded.email };
-    }
-    console.warn(`[AUTH] User ${email} does not possess admin privileges.`);
-  } catch (err: any) {
-    console.warn("[AUTH] verifyIdToken note:", err?.message || err);
-    // Reliable fallback: verify structured Firebase JWT token payload
-    try {
-      const parts = idToken.split(".");
-      if (parts.length === 3) {
-        const payload = JSON.parse(
-          Buffer.from(parts[1], "base64").toString("utf8"),
-        );
-        const email = payload.email?.toLowerCase();
-        const isDesignatedAdmin = Boolean(
-          email && ADMIN_EMAILS.includes(email),
-        );
-        const isAdmin = payload.admin === true || isDesignatedAdmin;
-        if (isAdmin) {
-          console.log(
-            `[AUTH] Administrator verified via authenticated token payload: ${email}`,
-          );
-          return { uid: payload.user_id || payload.sub, email };
-        }
-      }
-    } catch (decodeErr) {
-      console.warn("[AUTH] Token decode fallback error:", decodeErr);
-    }
-  }
-  return null;
-}
+// ============================================================================
+// 6. CLOUDINARY PRODUCT IMAGE UPLOAD & ASSET MANAGEMENT ROUTES
+// ============================================================================
 
 /**
  * POST /api/admin/cloudinary/upload
- * Securely uploads a product image to Cloudinary (folder: anfa-bd/products).
- * Enforces admin authorization, 5MB file size limit, and supported image formats.
+ * Securely uploads a product image to Cloudinary folder 'anfa-bd/products'.
+ * Requires:
+ * - Verified admin caller with { admin: true }
+ * - File size <= 5 MB
+ * - Valid image format and verified binary magic bytes
  */
 app.post(
   "/api/admin/cloudinary/upload",
+  uploadLimiter,
   (req, res, next) => {
     imageUpload.single("file")(req, res, (err) => {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
           return res.status(400).json({
             error: "FileSizeLimit",
-            message:
-              "Image exceeds maximum limit of 5 MB. Please upload a smaller image.",
+            message: "Image exceeds maximum allowed size of 5 MB.",
           });
         }
         return res
@@ -399,11 +487,20 @@ app.post(
   async (req: Request, res: Response): Promise<void> => {
     const admin = await verifyAdminCaller(req);
     if (!admin) {
-      // NOTE: Using status 401 instead of 403 to prevent Nginx proxy_intercept_errors from rewriting to forbidden.html
+      // Return 401 to prevent upstream proxy from rewriting 403 to HTML
       res.status(401).json({
         error: "Unauthorized",
         message:
-          "Administrator authorization required for image upload operations. Please sign in as an admin.",
+          "Administrator authorization required. Caller must possess verified { admin: true } claim.",
+      });
+      return;
+    }
+
+    if (!isCloudinaryConfigured) {
+      res.status(503).json({
+        error: "ServiceUnavailable",
+        message:
+          "Cloudinary credentials are not configured on the server. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in the server environment.",
       });
       return;
     }
@@ -412,18 +509,27 @@ app.post(
       let uploadResult: any;
 
       if (req.file) {
-        // Validate non-empty file buffer
-        if (!req.file.buffer || req.file.buffer.length === 0) {
+        const buffer = req.file.buffer;
+
+        // Verify non-empty buffer
+        if (!buffer || buffer.length === 0) {
           res.status(400).json({
             error: "EmptyFile",
-            message:
-              "Selected image file is empty (0 bytes). Please upload a valid image.",
+            message: "Selected file is empty (0 bytes). Please upload a valid image.",
           });
           return;
         }
 
-        // Multipart file buffer upload
-        const buffer = req.file.buffer;
+        // Verify actual image file content via magic bytes inspection
+        if (!isValidImageMagicBytes(buffer)) {
+          res.status(400).json({
+            error: "InvalidFileContent",
+            message:
+              "File content does not match a supported image format (JPEG, PNG, WebP, AVIF, GIF).",
+          });
+          return;
+        }
+
         uploadResult = await new Promise((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
             {
@@ -439,7 +545,7 @@ app.post(
           stream.end(buffer);
         });
       } else if (req.body?.image) {
-        // Base64 data URL upload
+        // Base64 Data URL upload
         const imageStr = req.body.image;
         if (
           typeof imageStr !== "string" ||
@@ -447,9 +553,22 @@ app.post(
         ) {
           res.status(400).json({
             error: "BadRequest",
-            message: "Invalid image data format.",
+            message: "Invalid image data format. Expected base64 data:image/* URL.",
           });
           return;
+        }
+
+        // Check decoded base64 size ceiling (approx 5MB)
+        const base64Data = imageStr.split(",")[1];
+        if (base64Data) {
+          const byteLength = Buffer.byteLength(base64Data, "base64");
+          if (byteLength > 5 * 1024 * 1024) {
+            res.status(400).json({
+              error: "FileSizeLimit",
+              message: "Image payload exceeds maximum allowed size of 5 MB.",
+            });
+            return;
+          }
         }
 
         uploadResult = await cloudinary.uploader.upload(imageStr, {
@@ -460,7 +579,7 @@ app.post(
       } else {
         res.status(400).json({
           error: "BadRequest",
-          message: "No file or image data provided.",
+          message: "No image file or image data provided in request.",
         });
         return;
       }
@@ -478,19 +597,7 @@ app.post(
         },
       });
     } catch (err: any) {
-      console.error("Cloudinary upload failure:", err);
-      if (
-        err?.http_code === 401 ||
-        err?.message?.includes("api_secret") ||
-        err?.message?.includes("Invalid Signature")
-      ) {
-        res.status(401).json({
-          error: "CloudinaryAuthError",
-          message:
-            "Cloudinary authentication failed: API Secret mismatch. Please verify CLOUDINARY_API_SECRET in your server environment.",
-        });
-        return;
-      }
+      console.error("[CLOUDINARY UPLOAD ERROR]", err?.message || err);
       res.status(500).json({
         error: "UploadFailed",
         message: err?.message || "Failed to upload image to Cloudinary.",
@@ -501,16 +608,28 @@ app.post(
 
 /**
  * POST /api/admin/cloudinary/delete
- * Deletes an asset from Cloudinary when an administrator removes it.
+ * Deletes an image from Cloudinary when an administrator removes it.
+ * Enforces admin authorization and namespace restriction (publicId must start with 'anfa-bd/').
  */
 app.post(
   "/api/admin/cloudinary/delete",
+  adminLimiter,
   async (req: Request, res: Response): Promise<void> => {
     const admin = await verifyAdminCaller(req);
     if (!admin) {
       res.status(401).json({
         error: "Unauthorized",
-        message: "Administrator authorization required for image deletion.",
+        message:
+          "Administrator authorization required for asset deletion operations.",
+      });
+      return;
+    }
+
+    if (!isCloudinaryConfigured) {
+      res.status(503).json({
+        error: "ServiceUnavailable",
+        message:
+          "Cloudinary credentials are not configured on the server. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in the server environment.",
       });
       return;
     }
@@ -524,13 +643,23 @@ app.post(
       return;
     }
 
+    // Security check: restrict deletions strictly to the anfa-bd namespace
+    if (!publicId.startsWith("anfa-bd/")) {
+      res.status(400).json({
+        error: "InvalidNamespace",
+        message:
+          "Deletion restricted: Target asset does not belong to the anfa-bd namespace.",
+      });
+      return;
+    }
+
     try {
       const result = await cloudinary.uploader.destroy(publicId, {
         invalidate: true,
       });
       res.status(200).json({ success: true, result });
     } catch (err: any) {
-      console.warn(`Cloudinary asset deletion error for ${publicId}:`, err);
+      console.error(`[CLOUDINARY DELETE ERROR for ${publicId}]`, err?.message || err);
       res.status(500).json({
         error: "DeleteFailed",
         message: err?.message || "Failed to delete asset from Cloudinary.",
@@ -541,16 +670,28 @@ app.post(
 
 /**
  * DELETE /api/admin/products/:id
- * Server-side deletion of a product from Firestore and cleanup of associated Cloudinary assets.
+ * Server-side deletion of a product from Firestore and safe cleanup of associated Cloudinary assets.
+ * Requires verified administrator authorization.
  */
 app.delete(
   "/api/admin/products/:id",
+  adminLimiter,
   async (req: Request, res: Response): Promise<void> => {
+    const admin = await verifyAdminCaller(req);
+    if (!admin) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Administrator authorization required to delete products.",
+      });
+      return;
+    }
+
     const { id } = req.params;
-    if (!id) {
-      res
-        .status(400)
-        .json({ error: "BadRequest", message: "Product ID is required." });
+    if (!id || typeof id !== "string" || id.length > 128 || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+      res.status(400).json({
+        error: "BadRequest",
+        message: "Invalid product ID format.",
+      });
       return;
     }
 
@@ -559,43 +700,57 @@ app.delete(
       const docRef = firestore.collection("products").doc(id);
       const snap = await docRef.get();
 
-      if (snap.exists) {
-        const data = snap.data();
-        const publicIds: string[] = [];
-        if (
-          data?.mainImagePublicId &&
-          typeof data.mainImagePublicId === "string"
-        ) {
-          publicIds.push(data.mainImagePublicId);
-        }
-        if (Array.isArray(data?.imagePublicIds)) {
-          data.imagePublicIds.forEach((pid: any) => {
-            if (typeof pid === "string" && pid && !publicIds.includes(pid)) {
-              publicIds.push(pid);
-            }
-          });
-        }
+      if (!snap.exists) {
+        res.status(404).json({
+          error: "NotFound",
+          message: `Product "${id}" was not found in Firestore.`,
+        });
+        return;
+      }
 
-        // Cleanup Cloudinary assets safely
+      const data = snap.data();
+      const publicIds: string[] = [];
+
+      if (
+        data?.mainImagePublicId &&
+        typeof data.mainImagePublicId === "string" &&
+        data.mainImagePublicId.startsWith("anfa-bd/")
+      ) {
+        publicIds.push(data.mainImagePublicId);
+      }
+
+      if (Array.isArray(data?.imagePublicIds)) {
+        data.imagePublicIds.forEach((pid: any) => {
+          if (
+            typeof pid === "string" &&
+            pid.startsWith("anfa-bd/") &&
+            !publicIds.includes(pid)
+          ) {
+            publicIds.push(pid);
+          }
+        });
+      }
+
+      if (isCloudinaryConfigured) {
+        // Cleanup associated Cloudinary assets under anfa-bd/
         for (const pid of publicIds) {
           try {
             await cloudinary.uploader.destroy(pid, { invalidate: true });
-          } catch (cErr) {
-            console.warn(`Failed cleaning up Cloudinary image ${pid}:`, cErr);
+          } catch (cErr: any) {
+            console.warn(`Failed cleaning up Cloudinary image ${pid}:`, cErr?.message || cErr);
           }
         }
       }
 
+      // Delete the Firestore document
       await docRef.delete();
+
       res.status(200).json({
         success: true,
-        message: `Product ${id} deleted successfully.`,
+        message: `Product ${id} and associated assets deleted successfully.`,
       });
     } catch (err: any) {
-      console.warn(
-        `Server-side deletion failed for product ${id}:`,
-        err?.message || err,
-      );
+      console.error(`[PRODUCT DELETE ERROR for ${id}]`, err?.message || err);
       res.status(500).json({
         error: "DeleteError",
         message: err.message || "Failed to delete product.",
@@ -604,286 +759,393 @@ app.delete(
   },
 );
 
+// ============================================================================
+// 7. ORDER INVOICE EMAIL DISPATCH ROUTE
+// ============================================================================
+
 /**
  * POST /api/orders/send-invoice-email
- * Automatically sends an email invoice to the customer when an order is created or when requested.
+ * Dispatches an official order confirmation & tax invoice email.
+ * Security & Reliability Constraints:
+ * 1. Retrieves trusted order data and totals from Firestore (never trusts client price/shipping payload).
+ * 2. Enforces server-side delivery fee calculation (Dhaka ৳80, Sub-area ৳120, Outside Dhaka ৳150).
+ * 3. Escapes all dynamic text to prevent HTML injection.
+ * 4. Strictly validates recipients (prevents open email relay abuse).
+ * 5. Returns accurate HTTP 503 if SMTP is unconfigured (never simulates success).
+ * 6. Does not return generated HTML in API responses.
  */
 app.post(
   "/api/orders/send-invoice-email",
+  invoiceLimiter,
   async (req: Request, res: Response): Promise<void> => {
-    const { order, recipient } = req.body;
-    if (!order || !order.customer || (!order.customer.email && !recipient)) {
+    const rawOrderId =
+      req.body.orderId ||
+      req.body.order?.id ||
+      req.body.orderNumber ||
+      req.body.order?.orderNumber;
+
+    if (!rawOrderId || typeof rawOrderId !== "string") {
       res.status(400).json({
         error: "BadRequest",
-        message: "Order object with customer.email is required.",
+        message: "Valid orderId is required.",
       });
       return;
     }
 
-    const finalRecipient =
-      (recipient && typeof recipient === "string" && recipient.trim()) ||
-      order.customer.email;
-    const {
-      customer,
-      items,
-      orderNumber,
-      subtotal,
-      shippingFee,
-      total,
-      paymentMethod,
-      deliveryZone,
-      createdAt,
-    } = order;
+    const orderId = rawOrderId.trim();
 
-    // Format delivery zone title
-    let zoneLabel = "Inside Dhaka (৳80)";
-    if (deliveryZone === "dhaka_sub_area") zoneLabel = "Dhaka sub-area (৳120)";
-    else if (deliveryZone === "outside_dhaka")
-      zoneLabel = "Outside Dhaka (৳150)";
+    try {
+      const firestore = getAdminFirestore();
 
-    const formattedDate = new Date(createdAt || Date.now()).toLocaleDateString(
-      "en-GB",
-      {
+      // Retrieve trusted order document from Firestore
+      let orderDoc: any = null;
+      let orderDocId = orderId;
+
+      const directSnap = await firestore.collection("orders").doc(orderId).get();
+      if (directSnap.exists) {
+        orderDoc = directSnap.data();
+        orderDocId = directSnap.id;
+      } else {
+        // Query by orderNumber
+        const qSnap = await firestore
+          .collection("orders")
+          .where("orderNumber", "==", orderId)
+          .limit(1)
+          .get();
+
+        if (!qSnap.empty) {
+          orderDoc = qSnap.docs[0].data();
+          orderDocId = qSnap.docs[0].id;
+        }
+      }
+
+      if (!orderDoc) {
+        res.status(404).json({
+          error: "NotFound",
+          message: `Order "${orderId}" was not found in the database.`,
+        });
+        return;
+      }
+
+      const trustedCustomerEmail = orderDoc.customer?.email?.trim().toLowerCase();
+      if (!trustedCustomerEmail) {
+        res.status(400).json({
+          error: "InvalidOrderRecord",
+          message: "Order record is missing customer email address.",
+        });
+        return;
+      }
+
+      // Check caller authorization
+      const adminCaller = await verifyAdminCaller(req);
+      const requestedRecipient = req.body.recipient?.trim().toLowerCase();
+
+      let finalRecipient = trustedCustomerEmail;
+
+      if (requestedRecipient) {
+        // Non-admin callers can only request invoice dispatch to the order's registered customer email
+        if (!adminCaller && requestedRecipient !== trustedCustomerEmail) {
+          res.status(401).json({
+            error: "Unauthorized",
+            message:
+              "Invoice email can only be dispatched to the order customer's verified email address.",
+          });
+          return;
+        }
+        finalRecipient = requestedRecipient;
+      }
+
+      // Basic RFC 5322 email regex check
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(finalRecipient)) {
+        res.status(400).json({
+          error: "BadRequest",
+          message: "Invalid recipient email address format.",
+        });
+        return;
+      }
+
+      // Recalculate trusted financial figures on the server
+      const items = Array.isArray(orderDoc.items) ? orderDoc.items : [];
+      let calculatedSubtotal = 0;
+      for (const item of items) {
+        const itemPrice = Math.max(0, Number(item.price) || 0);
+        const itemQuantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
+        calculatedSubtotal += itemPrice * itemQuantity;
+      }
+
+      // Determine delivery fee strictly based on delivery zone
+      const rawZone = (
+        orderDoc.deliveryZone ||
+        orderDoc.customer?.deliveryZone ||
+        ""
+      ).toLowerCase();
+
+      let zoneFee = 80;
+      let zoneLabel = "Inside Dhaka (৳80)";
+
+      if (
+        rawZone.includes("sub") ||
+        rawZone === "dhaka_sub_area" ||
+        rawZone === "dhaka sub-area"
+      ) {
+        zoneFee = 120;
+        zoneLabel = "Dhaka sub-area (৳120)";
+      } else if (
+        rawZone.includes("outside") ||
+        rawZone === "outside_dhaka" ||
+        rawZone === "outside dhaka"
+      ) {
+        zoneFee = 150;
+        zoneLabel = "Outside Dhaka (৳150)";
+      }
+
+      const calculatedTotal = calculatedSubtotal + zoneFee;
+      const orderNumber = orderDoc.orderNumber || orderDocId;
+
+      // Check SMTP configuration
+      const smtpHost = process.env.SMTP_HOST?.trim();
+      const smtpUser = (process.env.SMTP_USER || process.env.EMAIL_USER)?.trim();
+      const smtpPass = (process.env.SMTP_PASS || process.env.EMAIL_PASS)?.trim();
+      const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+
+      if (!smtpHost || !smtpUser || !smtpPass) {
+        console.warn(
+          `[SMTP NOTICE] Invoice dispatch requested for Order #${orderNumber}, but SMTP is unconfigured (SMTP_HOST, SMTP_USER, SMTP_PASS missing).`,
+        );
+        res.status(503).json({
+          error: "ServiceUnavailable",
+          message:
+            "Automated email service is unconfigured on the server. Please configure SMTP_HOST, SMTP_USER, and SMTP_PASS environment variables.",
+        });
+        return;
+      }
+
+      // Format date
+      const formattedDate = new Date(
+        orderDoc.createdAt || Date.now(),
+      ).toLocaleDateString("en-GB", {
         day: "numeric",
         month: "short",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-      },
-    );
+      });
 
-    // Build items HTML table rows
-    const itemsHtml = (items || [])
-      .map(
-        (item: any, idx: number) => `
-    <tr style="border-bottom: 1px solid #f1f5f9;">
-      <td style="padding: 12px 8px; font-size: 13px; color: #1e293b;">
-        <strong>${item.productName}</strong><br/>
-        <span style="font-size: 11px; color: #64748b;">Variant: ${item.variation?.name || "Standard"} (${item.variation?.color || ""}) ${item.variation?.sku ? "• SKU: " + item.variation.sku : ""}</span>
-      </td>
-      <td style="padding: 12px 8px; text-align: center; font-size: 13px; color: #1e293b;">
-        ${item.quantity}
-      </td>
-      <td style="padding: 12px 8px; text-align: right; font-size: 13px; color: #1e293b;">
-        ৳${(item.price || 0).toLocaleString()}
-      </td>
-      <td style="padding: 12px 8px; text-align: right; font-size: 13px; font-weight: 600; color: #0f172a;">
-        ৳${((item.price || 0) * (item.quantity || 1)).toLocaleString()}
+      // Escape all variables to prevent HTML injection
+      const safeCustomerName = escapeHtml(orderDoc.customer?.name || "Valued Customer");
+      const safeCustomerAddress = escapeHtml(orderDoc.customer?.address || "Address");
+      const safeCustomerCity = escapeHtml(orderDoc.customer?.city || "Dhaka");
+      const safeCustomerPostal = escapeHtml(orderDoc.customer?.postalCode || "");
+      const safeCustomerCountry = escapeHtml(orderDoc.customer?.country || "Bangladesh");
+      const safeCustomerPhone = escapeHtml(orderDoc.customer?.phone || "");
+      const safeCustomerEmail = escapeHtml(trustedCustomerEmail);
+      const safePaymentMethod = escapeHtml(orderDoc.paymentMethod || "Cash on Delivery");
+      const safeDeliveryNotes = escapeHtml(orderDoc.customer?.deliveryNotes || "");
+
+      // Render escaped items table rows
+      const itemsHtml = items
+        .map((item: any) => {
+          const safeName = escapeHtml(item.productName || "Product");
+          const safeVarName = escapeHtml(item.variation?.name || "Standard");
+          const safeVarColor = escapeHtml(item.variation?.color || "");
+          const safeSku = escapeHtml(item.variation?.sku || "");
+          const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+          const rate = Math.max(0, Number(item.price) || 0);
+          const lineTotal = rate * qty;
+
+          return `
+      <tr style="border-bottom: 1px solid #f1f5f9;">
+        <td style="padding: 12px 8px; font-size: 13px; color: #1e293b;">
+          <strong>${safeName}</strong><br/>
+          <span style="font-size: 11px; color: #64748b;">Variant: ${safeVarName}${safeVarColor ? " (" + safeVarColor + ")" : ""}${safeSku ? " • SKU: " + safeSku : ""}</span>
+        </td>
+        <td style="padding: 12px 8px; text-align: center; font-size: 13px; color: #1e293b;">
+          ${qty}
+        </td>
+        <td style="padding: 12px 8px; text-align: right; font-size: 13px; color: #1e293b;">
+          ৳${rate.toLocaleString()}
+        </td>
+        <td style="padding: 12px 8px; text-align: right; font-size: 13px; font-weight: 600; color: #0f172a;">
+          ৳${lineTotal.toLocaleString()}
+        </td>
+      </tr>`;
+        })
+        .join("");
+
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ANFA BD - Order Invoice #${escapeHtml(orderNumber)}</title>
+</head>
+<body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #fff8fa; margin: 0; padding: 24px; color: #1e293b;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #ffc1e3; box-shadow: 0 4px 20px rgba(255,20,147,0.08);">
+    
+    <!-- Brand Header -->
+    <tr>
+      <td style="background: #18020d; padding: 32px 28px; text-align: center; border-bottom: 3px solid #ff1493;">
+        <h1 style="margin: 0; font-size: 26px; letter-spacing: 0.18em; color: #ffffff; font-weight: 800; text-transform: uppercase;">
+          ANFA BD
+        </h1>
+        <p style="margin: 4px 0 0; font-size: 10px; letter-spacing: 0.28em; color: #ff1493; font-weight: 700; text-transform: uppercase;">
+          GIRLS SKIN CARE BOUTIQUE • AUTHENTIC K-BEAUTY
+        </p>
       </td>
     </tr>
-  `,
-      )
-      .join("");
 
-    const emailHtml = `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="utf-8">
-    <title>ANFA BD - Order Invoice #${orderNumber}</title>
-  </head>
-  <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #fff8fa; margin: 0; padding: 24px; color: #1e293b;">
-    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #ffc1e3; box-shadow: 0 4px 20px rgba(255,20,147,0.08);">
-      
-      <!-- Brand Header -->
-      <tr>
-        <td style="background: #18020d; padding: 32px 28px; text-align: center; border-bottom: 3px solid #ff1493;">
-          <h1 style="margin: 0; font-size: 26px; letter-spacing: 0.18em; color: #ffffff; font-weight: 800; text-transform: uppercase;">
-            ANFA BD
-          </h1>
-          <p style="margin: 4px 0 0; font-size: 10px; letter-spacing: 0.28em; color: #ff1493; font-weight: 700; text-transform: uppercase;">
-            GIRLS SKIN CARE BOUTIQUE • AUTHENTIC K-BEAUTY
-          </p>
-        </td>
-      </tr>
+    <!-- Order Notice -->
+    <tr>
+      <td style="padding: 28px 28px 12px;">
+        <div style="background: #fff0f6; border: 1px solid #ffc1e3; border-radius: 12px; padding: 16px; text-align: center;">
+          <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.15em; color: #ff1493; text-transform: uppercase;">Order Confirmed • Official Tax Invoice</span>
+          <h2 style="margin: 6px 0 2px; font-size: 20px; color: #0f172a;">Invoice #${escapeHtml(orderNumber)}</h2>
+          <p style="margin: 0; font-size: 12px; color: #64748b;">Issued on ${escapeHtml(formattedDate)}</p>
+        </div>
+      </td>
+    </tr>
 
-      <!-- Order Notice -->
-      <tr>
-        <td style="padding: 28px 28px 12px;">
-          <div style="background: #fff0f6; border: 1px solid #ffc1e3; border-radius: 12px; padding: 16px; text-align: center;">
-            <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.15em; color: #ff1493; text-transform: uppercase;">Order Confirmed • Official Tax Invoice</span>
-            <h2 style="margin: 6px 0 2px; font-size: 20px; color: #0f172a;">Invoice #${orderNumber}</h2>
-            <p style="margin: 0; font-size: 12px; color: #64748b;">Issued on ${formattedDate}</p>
-          </div>
-        </td>
-      </tr>
+    <!-- Customer & Shipping Grid -->
+    <tr>
+      <td style="padding: 12px 28px;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+            <td width="50%" valign="top" style="padding-right: 12px;">
+              <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #ff1493; letter-spacing: 0.1em;">Bill To & Deliver To:</p>
+              <p style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">${safeCustomerName}</p>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #475569; line-height: 1.5;">
+                ${safeCustomerAddress}<br/>
+                ${safeCustomerCity}${safeCustomerPostal ? " - " + safeCustomerPostal : ""}, ${safeCustomerCountry}<br/>
+                <strong>Phone:</strong> ${safeCustomerPhone}<br/>
+                <strong>Email:</strong> ${safeCustomerEmail}
+              </p>
+            </td>
+            <td width="50%" valign="top" style="padding-left: 12px; border-left: 1px solid #f1f5f9;">
+              <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #ff1493; letter-spacing: 0.1em;">Dispatch Details:</p>
+              <p style="margin: 0; font-size: 12px; color: #475569; line-height: 1.6;">
+                <strong>Payment Method:</strong> ${safePaymentMethod}<br/>
+                <strong>Delivery Zone:</strong> ${escapeHtml(zoneLabel)}<br/>
+                <strong>Courier:</strong> Insured Express Delivery<br/>
+                ${safeDeliveryNotes ? "<strong>Delivery Notes:</strong> " + safeDeliveryNotes : ""}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
 
-      <!-- Customer & Shipping Grid -->
-      <tr>
-        <td style="padding: 12px 28px;">
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td width="50%" valign="top" style="padding-right: 12px;">
-                <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #ff1493; letter-spacing: 0.1em;">Bill To & Deliver To:</p>
-                <p style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">${customer.name}</p>
-                <p style="margin: 4px 0 0; font-size: 12px; color: #475569; line-height: 1.5;">
-                  ${customer.address}<br/>
-                  ${customer.city}${customer.postalCode ? " - " + customer.postalCode : ""}, ${customer.country || "Bangladesh"}<br/>
-                  <strong>Phone:</strong> ${customer.phone}<br/>
-                  <strong>Email:</strong> ${customer.email}
-                </p>
-              </td>
-              <td width="50%" valign="top" style="padding-left: 12px; border-left: 1px solid #f1f5f9;">
-                <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #ff1493; letter-spacing: 0.1em;">Dispatch Details:</p>
-                <p style="margin: 0; font-size: 12px; color: #475569; line-height: 1.6;">
-                  <strong>Payment Method:</strong> ${paymentMethod || "Cash on Delivery"}<br/>
-                  <strong>Delivery Zone:</strong> ${zoneLabel}<br/>
-                  <strong>Courier:</strong> Insured Express Delivery<br/>
-                  ${customer.deliveryNotes ? "<strong>Delivery Notes:</strong> " + customer.deliveryNotes : ""}
-                </p>
-              </td>
+    <!-- Itemized Table -->
+    <tr>
+      <td style="padding: 16px 28px;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 2px solid #cbd5e1;">
+              <th style="padding: 10px 8px; text-align: left; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Product</th>
+              <th style="padding: 10px 8px; text-align: center; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Qty</th>
+              <th style="padding: 10px 8px; text-align: right; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Rate</th>
+              <th style="padding: 10px 8px; text-align: right; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Total</th>
             </tr>
-          </table>
-        </td>
-      </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+      </td>
+    </tr>
 
-      <!-- Itemized Table -->
-      <tr>
-        <td style="padding: 16px 28px;">
-          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
-            <thead>
-              <tr style="background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 10px 8px; text-align: left; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Product</th>
-                <th style="padding: 10px 8px; text-align: center; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Qty</th>
-                <th style="padding: 10px 8px; text-align: right; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Rate</th>
-                <th style="padding: 10px 8px; text-align: right; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
-        </td>
-      </tr>
+    <!-- Financial Totals -->
+    <tr>
+      <td style="padding: 0 28px 24px;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+            <td width="55%"></td>
+            <td width="45%">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size: 13px;">
+                <tr>
+                  <td style="padding: 4px 0; color: #64748b;">Items Subtotal:</td>
+                  <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #1e293b;">৳${calculatedSubtotal.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #64748b;">Delivery Fee:</td>
+                  <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #1e293b;">৳${zoneFee.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #64748b;">VAT / Taxes:</td>
+                  <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #10b981;">Included</td>
+                </tr>
+                <tr style="border-top: 2px solid #ff1493;">
+                  <td style="padding: 8px 0; font-size: 15px; font-weight: 800; color: #0f172a;">Total Payable:</td>
+                  <td style="padding: 8px 0; text-align: right; font-size: 17px; font-weight: 800; color: #ff1493;">৳${calculatedTotal.toLocaleString()}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
 
-      <!-- Financial Totals -->
-      <tr>
-        <td style="padding: 0 28px 24px;">
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td width="55%"></td>
-              <td width="45%">
-                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size: 13px;">
-                  <tr>
-                    <td style="padding: 4px 0; color: #64748b;">Items Subtotal:</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #1e293b;">৳${(subtotal || 0).toLocaleString()}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 4px 0; color: #64748b;">Delivery Fee:</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #1e293b;">৳${(shippingFee || 0).toLocaleString()}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 4px 0; color: #64748b;">VAT / Taxes:</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #10b981;">Included</td>
-                  </tr>
-                  <tr style="border-top: 2px solid #ff1493;">
-                    <td style="padding: 8px 0; font-size: 15px; font-weight: 800; color: #0f172a;">Total Payable:</td>
-                    <td style="padding: 8px 0; text-align: right; font-size: 17px; font-weight: 800; color: #ff1493;">৳${(total || 0).toLocaleString()}</td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
+    <!-- Footer Guarantee & Support -->
+    <tr>
+      <td style="background: #fff0f6; border-top: 1px solid #ffc1e3; padding: 24px 28px; text-align: center;">
+        <p style="margin: 0; font-size: 12px; font-weight: 700; color: #ff1493;">
+          100% Authentic Korean Skincare Guarantee
+        </p>
+        <p style="margin: 4px 0 12px; font-size: 11px; color: #64748b; line-height: 1.5;">
+          Directly imported from Seoul. All products come in sealed packaging with verifiable batch codes.
+          For questions or support, contact us at <strong>support@anfabd.com</strong>.
+        </p>
+        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">
+          ANFA BD • GIRLS SKIN CARE BOUTIQUE • DHAKA, BANGLADESH
+        </div>
+      </td>
+    </tr>
 
-      <!-- Footer Guarantee & Support -->
-      <tr>
-        <td style="background: #fff0f6; border-top: 1px solid #ffc1e3; padding: 24px 28px; text-align: center;">
-          <p style="margin: 0; font-size: 12px; font-weight: 700; color: #ff1493;">
-            100% Authentic Korean Skincare Guarantee
-          </p>
-          <p style="margin: 4px 0 12px; font-size: 11px; color: #64748b; line-height: 1.5;">
-            Directly imported from Seoul. All products come in sealed packaging with verifiable batch codes.
-            For delivery questions or support, contact us at <strong>support@anfabd.com</strong>.
-          </p>
-          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">
-            ANFA BD • GIRLS SKIN CARE BOUTIQUE • DHAKA, BANGLADESH
-          </div>
-        </td>
-      </tr>
+  </table>
+</body>
+</html>`;
 
-    </table>
-  </body>
-  </html>
-  `;
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
 
-    try {
-      let emailSent = false;
-      let transportInfo = "simulated";
+      await transporter.sendMail({
+        from: `"ANFA BD Boutique" <${smtpUser}>`,
+        to: finalRecipient,
+        subject: `Your Invoice for Order #${orderNumber} • ANFA BD`,
+        html: emailHtml,
+      });
 
-      // Check if SMTP is configured
-      const smtpHost = process.env.SMTP_HOST;
-      const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
-      const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
-      const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
-
-      if (smtpHost && smtpUser && smtpPass) {
-        const transporter = nodemailer.createTransport({
-          host: smtpHost,
-          port: smtpPort,
-          secure: smtpPort === 465,
-          auth: {
-            user: smtpUser,
-            pass: smtpPass,
-          },
-        });
-
-        await transporter.sendMail({
-          from: `"ANFA BD Boutique" <${smtpUser}>`,
-          to: finalRecipient,
-          subject: `Your Invoice for Order #${orderNumber} • ANFA BD`,
-          html: emailHtml,
-        });
-
-        emailSent = true;
-        transportInfo = "smtp";
-        console.log(
-          `[EMAIL DISPATCH] Real SMTP invoice email successfully sent to ${finalRecipient} for order #${orderNumber}`,
-        );
-      } else {
-        // Automatic simulation / logging when SMTP credentials are not yet configured
-        emailSent = true;
-        transportInfo = "simulated-logged";
-        console.log(
-          "========================================================================",
-        );
-        console.log(`[AUTOMATIC EMAIL INVOICE DISPATCH]`);
-        console.log(`To: ${finalRecipient} (${customer.name})`);
-        console.log(
-          `Subject: Your Invoice for Order #${orderNumber} • ANFA BD`,
-        );
-        console.log(
-          `Total: ৳${(total || 0).toLocaleString()} (Delivery: ৳${shippingFee || 0} - ${zoneLabel})`,
-        );
-        console.log(
-          `Status: Invoice generated and dispatched to customer's inbox.`,
-        );
-        console.log(
-          "========================================================================",
-        );
-      }
+      console.log(
+        `[INVOICE EMAIL] Sent invoice for Order #${orderNumber} to ${finalRecipient}`,
+      );
 
       res.status(200).json({
         success: true,
-        emailSent,
-        transport: transportInfo,
+        emailSent: true,
         recipient: finalRecipient,
         orderNumber,
-        message: `Invoice email successfully dispatched to ${finalRecipient}`,
-        htmlPreview: emailHtml,
+        message: `Invoice email successfully sent to ${finalRecipient}`,
       });
     } catch (err: any) {
-      console.error("[EMAIL ERROR] Failed to transmit invoice email:", err);
+      console.error("[INVOICE EMAIL ERROR]", err?.message || err);
       res.status(500).json({
         error: "EmailDispatchFailed",
-        message: err.message || "Could not send invoice email.",
+        message: err.message || "Failed to dispatch invoice email.",
       });
     }
   },
 );
 
-// Start server with Vite middleware in dev or static files in production
+// ============================================================================
+// 8. DEV VITE MIDDLEWARE & PRODUCTION STATIC SERVING
+// ============================================================================
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");

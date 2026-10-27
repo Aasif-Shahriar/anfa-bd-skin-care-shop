@@ -52,9 +52,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearAuthError = () => setAuthError(null);
 
-  // Designated administrative accounts
-  const ADMIN_EMAILS = ['asif.al.azad201m@gmail.com', 'faria201237@gmail.com'];
-
   // Helper to extract and verify real Firebase Custom Claim from ID Token
   const verifyTokenClaims = async (currentUser: User): Promise<boolean> => {
     try {
@@ -62,18 +59,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const tokenResult = await currentUser.getIdTokenResult(true);
       const userClaims = tokenResult.claims || {};
       setClaims(userClaims);
-      const email = currentUser.email?.toLowerCase();
-      const isDesignatedAdmin = Boolean(email && ADMIN_EMAILS.includes(email));
-      const hasAdminPrivilege = Boolean(userClaims.admin === true || isDesignatedAdmin);
+      const hasAdminPrivilege = Boolean(userClaims.admin === true);
       setIsAdmin(hasAdminPrivilege);
       return hasAdminPrivilege;
     } catch (err) {
       console.warn('Failed to verify token custom claims:', err);
-      const email = currentUser.email?.toLowerCase();
-      const isDesignatedAdmin = Boolean(email && ADMIN_EMAILS.includes(email));
-      setIsAdmin(isDesignatedAdmin);
+      setIsAdmin(false);
       setClaims({});
-      return isDesignatedAdmin;
+      return false;
     }
   };
 

@@ -8,7 +8,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, ProductStatus } from '../types';
 import { INITIAL_SKINCARE_PRODUCTS } from '../data/sampleProducts';
 import { cleanForFirestore } from './orderService';
@@ -304,8 +304,10 @@ export async function removeProduct(id: string): Promise<void> {
   // 3. Fallback: If client deletion had an issue, attempt through backend proxy
   if (!deletedFromFirestore) {
     try {
+      const token = await auth.currentUser?.getIdToken();
       const response = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
         method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (response.ok) {
         deletedFromFirestore = true;

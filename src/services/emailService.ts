@@ -4,14 +4,12 @@ export interface SendInvoiceResponse {
   success: boolean;
   message: string;
   emailSent?: boolean;
-  transport?: string;
   recipient?: string;
   orderNumber?: string;
-  htmlPreview?: string;
 }
 
 /**
- * Automatically dispatches an official order confirmation & tax invoice email to the customer.
+ * Dispatches an official order confirmation & tax invoice email to the customer.
  */
 export async function sendOrderInvoiceEmail(
   order: Order,
@@ -24,7 +22,10 @@ export async function sendOrderInvoiceEmail(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ order, recipient: targetEmail }),
+      body: JSON.stringify({
+        orderId: order.id || order.orderNumber,
+        recipient: targetEmail,
+      }),
     });
 
     if (!res.ok) {
@@ -35,14 +36,16 @@ export async function sendOrderInvoiceEmail(
     const data: SendInvoiceResponse = await res.json();
     return data;
   } catch (err: any) {
-    console.warn(`[EMAIL CLIENT] Automated invoice email fallback for Order #${order.orderNumber}:`, err);
+    console.warn(
+      `[EMAIL CLIENT] Invoice email notice for Order #${order.orderNumber}:`,
+      err?.message || err
+    );
     return {
-      success: true,
-      emailSent: true,
-      transport: 'client-queued',
+      success: false,
+      emailSent: false,
       recipient: targetEmail,
       orderNumber: order.orderNumber,
-      message: `Invoice recorded and queued for ${targetEmail}`,
+      message: err?.message || 'Invoice email dispatch unavailable.',
     };
   }
 }

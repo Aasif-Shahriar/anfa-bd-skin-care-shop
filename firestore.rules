@@ -7,25 +7,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Admin authorization: verifies request.auth != null and either admin custom claim or designated admin emails
+    // Hardened Admin authorization:
+    // Requires authenticated caller possessing verified custom claim { admin: true }
+    // OR verified record in the /admins/{uid} collection. No hardcoded emails.
     function isAdmin() {
-      return request.auth != null && (
+      return isSignedIn() && (
         request.auth.token.admin == true ||
-        (request.auth.token.email != null && (
-          request.auth.token.email == 'asif.al.azad201m@gmail.com' ||
-          request.auth.token.email == 'faria201237@gmail.com'
-        ))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 
-    // Default deny
+    // Default deny catch-all
     match /{document=**} {
       allow read, write: if false;
     }
 
     // Products collection:
-    // Anyone can view products
-    // Only verified admin with custom claim { admin: true } can create, update, or delete products, prices, stock, variations
+    // Anyone can read active published products
+    // Only verified administrators can create, update, or delete products
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -34,16 +33,16 @@ service cloud.firestore {
     // Orders collection:
     // Anyone can create an order as part of checkout
     // Customers can ONLY read their own orders (where userId matches their uid)
-    // Only verified admin can read all orders, update order status, or delete orders
+    // Only verified administrators can read all orders, update status, or delete orders
     match /orders/{orderId} {
       allow create: if true;
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow update, delete: if isAdmin();
     }
 
-    // User profiles & subcollections:
-    // User can read and write only their own document/subcollections
-    // Admin can read user records
+    // User profiles:
+    // Users can read and write only their own profile document
+    // Administrators can read user records
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow write: if isSignedIn() && request.auth.uid == userId;
@@ -56,15 +55,15 @@ service cloud.firestore {
     // Reviews collection:
     // Anyone can read reviews
     // Authenticated users can create reviews matching their auth.uid
-    // Only the author or an admin with custom claim { admin: true } can update or delete reviews
+    // Only the author or an administrator can update or delete reviews
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // Admin-only collections:
-    match /admin/{document=**} {
+    // Administrator records:
+    match /admins/{adminId} {
       allow read, write: if isAdmin();
     }
 
