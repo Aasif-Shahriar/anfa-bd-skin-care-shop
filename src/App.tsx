@@ -17,13 +17,36 @@ import { OrderConfirmationPage } from './pages/OrderConfirmationPage';
 import { AccountPage } from './pages/AccountPage';
 import { AdminPage } from './pages/AdminPage';
 import { OrderTrackingPage } from './pages/OrderTrackingPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { Product, ProductVariation, Order } from './types';
 import { fetchProducts } from './services/productService';
 
+function getInitialRoute(): { page: string; param?: string } {
+  try {
+    const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
+    if (path === '/' || path === '/home') return { page: 'home' };
+    if (path === '/shop') return { page: 'shop' };
+    if (path === '/cart') return { page: 'cart' };
+    if (path === '/checkout') return { page: 'checkout' };
+    if (path === '/account') return { page: 'account' };
+    if (path === '/wishlist') return { page: 'wishlist' };
+    if (path === '/track-order') return { page: 'track-order' };
+    if (path === '/admin') return { page: 'admin' };
+    if (path.startsWith('/category/')) {
+      const cat = decodeURIComponent(path.replace('/category/', ''));
+      return { page: 'shop', param: cat };
+    }
+    return { page: '404' };
+  } catch {
+    return { page: 'home' };
+  }
+}
+
 function AppContent() {
   const { authError, clearAuthError } = useAuth();
-  const [currentPage, setCurrentPage] = useState<string>('home');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const initialRoute = getInitialRoute();
+  const [currentPage, setCurrentPage] = useState<string>(initialRoute.page);
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialRoute.param || 'All');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
@@ -51,6 +74,19 @@ function AppContent() {
     loadCatalogue();
   }, []);
 
+  // Listen to browser Back/Forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = getInitialRoute();
+      setCurrentPage(route.page);
+      if (route.param) {
+        setSelectedCategory(route.param);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Navigation handler
   const handleNavigate = (page: string, param?: string) => {
     setCurrentPage(page);
@@ -61,6 +97,27 @@ function AppContent() {
     } else if (page === 'shop' && !param) {
       setSelectedCategory('All');
     }
+
+    // Sync browser URL bar cleanly
+    try {
+      let targetPath = '/';
+      if (page === 'home') targetPath = '/';
+      else if (page === 'shop') targetPath = param && param !== 'All' ? `/category/${encodeURIComponent(param)}` : '/shop';
+      else if (page === 'cart') targetPath = '/cart';
+      else if (page === 'checkout') targetPath = '/checkout';
+      else if (page === 'account') targetPath = '/account';
+      else if (page === 'wishlist') targetPath = '/wishlist';
+      else if (page === 'track-order') targetPath = '/track-order';
+      else if (page === 'admin') targetPath = '/admin';
+      else if (page === '404') targetPath = '/404';
+
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath);
+      }
+    } catch {
+      // Ignore in non-browser or sandbox environments
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -206,6 +263,27 @@ function AppContent() {
               <AdminPage
                 onNavigate={handleNavigate}
                 onRefreshData={loadCatalogue}
+              />
+            )}
+
+            {(currentPage === '404' ||
+              ![
+                'home',
+                'shop',
+                'product',
+                'cart',
+                'checkout',
+                'order-confirmation',
+                'account',
+                'wishlist',
+                'track-order',
+                'admin',
+              ].includes(currentPage) ||
+              (currentPage === 'product' && !selectedProduct) ||
+              (currentPage === 'order-confirmation' && !confirmedOrder)) && (
+              <NotFoundPage
+                onNavigate={handleNavigate}
+                onOpenSearch={() => setIsSearchOpen(true)}
               />
             )}
           </>
